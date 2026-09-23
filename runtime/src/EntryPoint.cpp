@@ -24,6 +24,7 @@
 #include "Config.h"
 #include "RuntimeStatus.h"
 #include "VulkanDispatch.h"
+#include "D3D11Interop.h"
 
 #include <spdlog/spdlog.h>
 #include <glm/glm.hpp>
@@ -44,6 +45,9 @@
 #include <unordered_set>
 #include <algorithm>
 #include <cmath>
+#ifdef GetCurrentTime
+#undef GetCurrentTime // winbase.h macro; clashes with Session::GetCurrentTime
+#endif
 
 // We need to keep ownership of created objects
 static std::unique_ptr<Instance> gInstance;
@@ -1093,6 +1097,15 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrEnumerateSwapchainFormats(
         supportedFormats = vulkanFormats;
         formatCount = sizeof(vulkanFormats) / sizeof(vulkanFormats[0]);
     }
+#if defined(_WIN32)
+    // VDXR's list: what shares as a D3D11 texture on this adapter.
+    static const std::vector<int64_t> win32VulkanFormats = Win32SupportedVulkanFormats();
+    if (gGraphicsApi == GraphicsApi::Vulkan)
+    {
+        supportedFormats = win32VulkanFormats.data();
+        formatCount = static_cast<uint32_t>(win32VulkanFormats.size());
+    }
+#endif
 #endif
 
     if (formatCountOutput == nullptr)
@@ -3223,6 +3236,52 @@ static void EnsureMetalDevice()
 
 // --- v1 functions (XR_KHR_vulkan_enable) ---
 
+#if defined(_WIN32)
+static XrResult WriteExtensionString(const char* extensions, uint32_t bufferCapacityInput,
+                                     uint32_t* bufferCountOutput, char* buffer)
+{
+    const uint32_t size = static_cast<uint32_t>(std::strlen(extensions)) + 1;
+    *bufferCountOutput = size;
+    if (bufferCapacityInput == 0)
+    {
+        return XR_SUCCESS;
+    }
+    if (bufferCapacityInput < size || buffer == nullptr)
+    {
+        return XR_ERROR_SIZE_INSUFFICIENT;
+    }
+    std::memcpy(buffer, extensions, size);
+    return XR_SUCCESS;
+}
+
+// Append each space-separated name in list that is not already in names.
+static void AppendExtensions(std::vector<const char*>& names, std::vector<std::string>& storage,
+                             const char* list)
+{
+    std::string all(list);
+    size_t start = 0;
+    while (start < all.size())
+    {
+        size_t end = all.find(' ', start);
+        if (end == std::string::npos)
+        {
+            end = all.size();
+        }
+        storage.push_back(all.substr(start, end - start));
+        start = end + 1;
+    }
+    for (const std::string& name : storage)
+    {
+        bool present = std::any_of(names.begin(), names.end(),
+                                   [&](const char* existing) { return name == existing; });
+        if (!present)
+        {
+            names.push_back(name.c_str());
+        }
+    }
+}
+#endif
+
 static XRAPI_ATTR XrResult XRAPI_CALL OxrGetVulkanInstanceExtensionsKHR(
     XrInstance instance, XrSystemId /*systemId*/,
     uint32_t bufferCapacityInput, uint32_t* bufferCountOutput, char* buffer)
@@ -3237,6 +3296,9 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetVulkanInstanceExtensionsKHR(
         return XR_ERROR_VALIDATION_FAILURE;
     }
 
+#if defined(_WIN32)
+    return WriteExtensionString(kWin32VulkanInstanceExtensions, bufferCapacityInput, bufferCountOutput, buffer);
+#else
     // No additional instance extensions required from the runtime
     // (Godot/apps handle portability enumeration themselves in the v1 path)
     *bufferCountOutput = 1; // just the null terminator
@@ -3249,6 +3311,7 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetVulkanInstanceExtensionsKHR(
         buffer[0] = '\0';
     }
     return XR_SUCCESS;
+#endif
 }
 
 static XRAPI_ATTR XrResult XRAPI_CALL OxrGetVulkanDeviceExtensionsKHR(
@@ -3265,6 +3328,9 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetVulkanDeviceExtensionsKHR(
         return XR_ERROR_VALIDATION_FAILURE;
     }
 
+#if defined(_WIN32)
+    return WriteExtensionString(kWin32VulkanDeviceExtensions, bufferCapacityInput, bufferCountOutput, buffer);
+#else
     // No additional device extensions required from the runtime
     // (Godot/apps handle portability subset themselves in the v1 path)
     *bufferCountOutput = 1;
@@ -3277,6 +3343,7 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetVulkanDeviceExtensionsKHR(
         buffer[0] = '\0';
     }
     return XR_SUCCESS;
+#endif
 }
 
 static XRAPI_ATTR XrResult XRAPI_CALL OxrGetVulkanGraphicsDeviceKHR(
@@ -3305,6 +3372,14 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetVulkanGraphicsDeviceKHR(
     std::vector<VkPhysicalDevice> devices(deviceCount);
     gVulkanDispatch.enumeratePhysicalDevices(vkInstance, &deviceCount, devices.data());
     *vkPhysicalDevice = devices[0];
+#if defined(_WIN32)
+    // The device whose LUID matches the runtime's D3D11 adapter (VDXR vulkan_interop.cpp:156-181).
+    *vkPhysicalDevice = Win32SelectPhysicalDevice(vkInstance);
+    if (*vkPhysicalDevice == VK_NULL_HANDLE)
+    {
+        return XR_ERROR_RUNTIME_FAILURE;
+    }
+#endif
 
     if (gVulkanDispatch.getPhysicalDeviceProperties)
     {
@@ -3341,8 +3416,14 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetVulkanGraphicsRequirementsKHR(
     EnsureMetalDevice();
 
     graphicsRequirements->type = XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR;
+#if defined(_WIN32)
+    // External memory and timeline semaphores need Vulkan 1.1 (VDXR vulkan_interop.cpp:397-403).
+    graphicsRequirements->minApiVersionSupported = XR_MAKE_VERSION(1, 1, 0);
+    graphicsRequirements->maxApiVersionSupported = XR_MAKE_VERSION(2, 0, 0);
+#else
     graphicsRequirements->minApiVersionSupported = XR_MAKE_VERSION(1, 0, 0);
     graphicsRequirements->maxApiVersionSupported = XR_MAKE_VERSION(1, 3, 0);
+#endif
     inst->MarkVulkanGraphicsRequirementsQueried();
 
     spdlog::info("OXRSys: Vulkan graphics requirements provided");
@@ -3424,6 +3505,10 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrCreateVulkanInstanceKHR(
             extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
         }
     }
+#if defined(_WIN32)
+    std::vector<std::string> interopInstanceExtensions;
+    AppendExtensions(extensions, interopInstanceExtensions, kWin32VulkanInstanceExtensions);
+#endif
     modifiedCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
     modifiedCreateInfo.ppEnabledExtensionNames = extensions.data();
 
@@ -3505,6 +3590,36 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrCreateVulkanDeviceKHR(
     }
 #endif
 
+#if defined(_WIN32)
+    // D3D11 texture and fence sharing (VDXR vulkan_interop.cpp:284-330). Timeline semaphores
+    // are enabled on whichever features struct the app chained, or on one of ours.
+    std::vector<std::string> interopDeviceExtensions;
+    AppendExtensions(deviceExts, interopDeviceExtensions, kWin32VulkanDeviceExtensions);
+
+    VkPhysicalDeviceTimelineSemaphoreFeatures timelineFeatures{
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES};
+    timelineFeatures.timelineSemaphore = VK_TRUE;
+    bool timelineEnabled = false;
+    for (auto* feature = reinterpret_cast<VkBaseOutStructure*>(const_cast<void*>(appDeviceInfo->pNext));
+         feature != nullptr; feature = feature->pNext)
+    {
+        if (feature->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES)
+        {
+            reinterpret_cast<VkPhysicalDeviceVulkan12Features*>(feature)->timelineSemaphore = VK_TRUE;
+            timelineEnabled = true;
+        }
+        else if (feature->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES)
+        {
+            reinterpret_cast<VkPhysicalDeviceTimelineSemaphoreFeatures*>(feature)->timelineSemaphore = VK_TRUE;
+            timelineEnabled = true;
+        }
+    }
+    if (!timelineEnabled)
+    {
+        timelineFeatures.pNext = const_cast<void*>(appDeviceInfo->pNext);
+        modifiedDeviceInfo.pNext = &timelineFeatures;
+    }
+#endif
     modifiedDeviceInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExts.size());
     modifiedDeviceInfo.ppEnabledExtensionNames = deviceExts.data();
 
@@ -3753,15 +3868,32 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetInstanceProcAddr(
 // Loader negotiation — the only exported symbol
 // ============================================================================
 
+#if defined(_WIN32)
+BOOL WINAPI DllMain(HINSTANCE /*instance*/, DWORD reason, LPVOID reserved)
+{
+    // On process exit (reserved != nullptr) other threads are already gone; leave state alone.
+    if (reason == DLL_PROCESS_DETACH && reserved == nullptr)
+    {
+        CleanupRuntimeState();
+    }
+    return TRUE;
+}
+#define OXRSYS_EXPORT __declspec(dllexport)
+#else
+#define OXRSYS_EXPORT __attribute__((visibility("default")))
+#endif
+
 extern "C"
 {
+#if !defined(_WIN32)
     __attribute__((destructor))
     static void CleanupRuntimeOnUnload()
     {
         CleanupRuntimeState();
     }
+#endif
 
-    __attribute__((visibility("default")))
+    OXRSYS_EXPORT
     XRAPI_ATTR XrResult XRAPI_CALL xrNegotiateLoaderRuntimeInterface(
         const XrNegotiateLoaderInfo* loaderInfo,
         XrNegotiateRuntimeRequest* runtimeRequest)

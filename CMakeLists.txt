@@ -178,6 +178,10 @@ target_link_libraries(oxrsys_runtime_tests PRIVATE
     spdlog::spdlog
     ${CMAKE_DL_LIBS}
 )
+if(WIN32)
+    target_link_libraries(oxrsys_runtime_tests PRIVATE ws2_32)
+    target_compile_definitions(oxrsys_runtime_tests PRIVATE NOMINMAX _CRT_SECURE_NO_WARNINGS)
+endif()
 if(APPLE)
     target_compile_definitions(oxrsys_runtime_tests PRIVATE
         XR_USE_GRAPHICS_API_METAL
@@ -191,13 +195,16 @@ set_tests_properties(oxrsys_runtime_tests PROPERTIES
     ENVIRONMENT "${OXRSYS_ISOLATED_TEST_ENV}"
     TIMEOUT 120
 )
-add_test(NAME oxrsys_runtime_logcat_timeout
-    COMMAND oxrsys_runtime_tests "Config singleton initializes with bounded Quest logcat clear"
-)
-set_tests_properties(oxrsys_runtime_logcat_timeout PROPERTIES
-    ENVIRONMENT "${OXRSYS_LOGCAT_TEST_ENV}"
-    TIMEOUT 10
-)
+# The fake adb is a /bin/sh script, and Quest logcat is disabled on Windows.
+if(NOT WIN32)
+    add_test(NAME oxrsys_runtime_logcat_timeout
+        COMMAND oxrsys_runtime_tests "Config singleton initializes with bounded Quest logcat clear"
+    )
+    set_tests_properties(oxrsys_runtime_logcat_timeout PROPERTIES
+        ENVIRONMENT "${OXRSYS_LOGCAT_TEST_ENV}"
+        TIMEOUT 10
+    )
+endif()
 
 add_executable(oxrsys_runtime_status_tests
     tests/TestRuntimeStatus.cpp
@@ -273,7 +280,7 @@ endif()
 set(OXRSYS_QT_FRONTENDS_ENABLED OFF)
 if(OXRSYS_BUILD_QT_FRONTENDS_NORMALIZED STREQUAL "ON")
     set(OXRSYS_QT_FRONTENDS_ENABLED ON)
-elseif(OXRSYS_BUILD_QT_FRONTENDS_NORMALIZED STREQUAL "AUTO" AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+elseif(OXRSYS_BUILD_QT_FRONTENDS_NORMALIZED STREQUAL "AUTO" AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR WIN32))
     include(${CMAKE_CURRENT_SOURCE_DIR}/clients/Qt/cmake/DetectQt6.cmake)
     find_package(Qt6 QUIET COMPONENTS Core Widgets Network)
     if(Qt6_FOUND)

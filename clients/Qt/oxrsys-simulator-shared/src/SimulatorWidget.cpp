@@ -342,13 +342,23 @@ SimulatorWidget::SimulatorWidget(QWidget* parent)
     poseClock_.start();
     trackingTimer_->start();
     setState(State::Disconnected, "Disconnected");
+
+    // Scripted runs: OXRSYS_SIMULATOR_AUTOCONNECT=1 searches at start and connects to the
+    // first runtime it hears; OXRSYS_SIMULATOR_SNAPSHOT=<file.png> saves the 90th decoded
+    // frame there.
+    autoConnect_ = qEnvironmentVariableIntValue("OXRSYS_SIMULATOR_AUTOCONNECT") != 0;
+    snapshotPath_ = qEnvironmentVariable("OXRSYS_SIMULATOR_SNAPSHOT");
+    if (autoConnect_)
+    {
+        QTimer::singleShot(0, this, &SimulatorWidget::startDiscovery);
+    }
 }
 
 SimulatorWidget::~SimulatorWidget()
 {
     trackingTimer_->stop();
     disconnectFromRuntime();
-#if OXRSYS_QT_SIMULATOR_HAS_FFMPEG
+#if OXRSYS_QT_SIMULATOR_HAS_VIDEO
     resetVideoDecoder();
 #endif
 }
@@ -438,6 +448,10 @@ void SimulatorWidget::readPendingDiscoveryDatagrams()
         serverAddress_ = sender;
         setState(State::Discovered, "Runtime discovered");
         updateServerSummary();
+        if (autoConnect_)
+        {
+            QTimer::singleShot(0, this, &SimulatorWidget::connectToDiscoveredRuntime);
+        }
     }
 }
 
@@ -477,7 +491,11 @@ void SimulatorWidget::connectToDiscoveredRuntime()
     connectPacket.type = oxr::protocol::MessageType::ClientConnect;
     connectPacket.versionMajor = 1;
     connectPacket.versionMinor = 0;
+#if OXRSYS_QT_SIMULATOR_HAS_NVDEC
+    connectPacket.preferredCodec = static_cast<uint32_t>(oxr::protocol::VideoCodec::AV1);
+#else
     connectPacket.preferredCodec = static_cast<uint32_t>(oxr::protocol::VideoCodec::H265);
+#endif
     connectPacket.maxBitrateMbps = oxr::protocol::CLIENT_MAX_BITRATE_USE_SERVER_CONFIG;
     connectPacket.refreshRateHz = std::max<uint32_t>(discoveredServer_.refreshRateHz, 60);
     const QByteArray deviceName = platformSimulatorDeviceName().toUtf8();
@@ -777,7 +795,7 @@ void SimulatorWidget::updatePreviewStatus()
     }
 
     QString status;
-#if !OXRSYS_QT_SIMULATOR_HAS_FFMPEG
+#if !OXRSYS_QT_SIMULATOR_HAS_VIDEO
     status = "Video preview unavailable: FFmpeg support was not enabled";
 #else
     if (state_ == State::Streaming && videoFramesDecoded_ == 0)
@@ -842,7 +860,7 @@ float SimulatorWidget::simulatorPerEyeAspect() const
 
 bool SimulatorWidget::startVideoReceiver()
 {
-#if !OXRSYS_QT_SIMULATOR_HAS_FFMPEG
+#if !OXRSYS_QT_SIMULATOR_HAS_VIDEO
     videoAssembler_.reset();
     videoPacketsReceived_ = 0;
     videoFramesDecoded_ = 0;
@@ -898,7 +916,7 @@ void SimulatorWidget::stopVideoReceiver()
     consecutiveDecodeErrors_ = 0;
     lastKeyframeRequestTimeNs_ = 0;
     updatePreviewStatus();
-#if OXRSYS_QT_SIMULATOR_HAS_FFMPEG
+#if OXRSYS_QT_SIMULATOR_HAS_VIDEO
     resetVideoDecoder();
 #endif
 }
@@ -930,7 +948,7 @@ void SimulatorWidget::processAssembledVideoFrames(const QList<AssembledVideoFram
 
     for (const AssembledVideoFrame& frame : frames)
     {
-#if OXRSYS_QT_SIMULATOR_HAS_FFMPEG
+#if OXRSYS_QT_SIMULATOR_HAS_VIDEO
         const int64_t decodeStartNs = monotonicNowNs();
         if (decodeVideoFrame(frame))
         {
@@ -1147,6 +1165,50 @@ bool SimulatorWidget::decodeVideoFrame(const AssembledVideoFrame& frame)
         av_frame_unref(decodedFrame_);
     }
     return decodedAnyFrame;
+}
+#elif OXRSYS_QT_SIMULATOR_HAS_NVDEC
+bool SimulatorWidget::ensureVideoDecoder()
+{
+    QString error;
+    if (!nvdec_.initialize(&error))
+    {
+        setState(State::Discovered, error);
+        return false;
+    }
+    return true;
+}
+
+void SimulatorWidget::resetVideoDecoder()
+{
+    nvdec_.reset();
+}
+
+bool SimulatorWidget::decodeVideoFrame(const AssembledVideoFrame& frame)
+{
+    if (!ensureVideoDecoder() || frame.nalUnit.isEmpty())
+    {
+        return false;
+    }
+    QList<QImage> images;
+    if (!nvdec_.decode(frame.nalUnit, frame.presentationTimeNs, images))
+    {
+        return false;
+    }
+    if (previewWidget_ != nullptr)
+    {
+        previewWidget_->setVideoFrame(images.last());
+    }
+    const quint64 before = videoFramesDecoded_;
+    videoFramesDecoded_ += static_cast<quint64>(images.size());
+    if (before == 0)
+    {
+        qInfo("NVDEC: first AV1 frame decoded, %dx%d", images.last().width(), images.last().height());
+    }
+    if (!snapshotPath_.isEmpty() && before < 90 && videoFramesDecoded_ >= 90)
+    {
+        qInfo("NVDEC: snapshot %s", images.last().save(snapshotPath_) ? "saved" : "failed");
+    }
+    return true;
 }
 #endif
 

@@ -1,0 +1,3 @@
+[submodule "third_party/nv-codec-headers"]
+	path = third_party/nv-codec-headers
+	url = https://github.com/V-Sekai-fire/nv-codec-headers

@@ -29,6 +29,13 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         src/SwapchainVulkan.cpp
         src/FfmpegVideoEncoder.cpp
     )
+elseif(WIN32)
+    # Vulkan on Windows goes through shared D3D11 textures, after VirtualDesktop-OpenXR.
+    list(APPEND OXRSYS_RUNTIME_SOURCES
+        src/SwapchainVulkan.cpp
+        src/D3D11Interop.cpp
+        src/NvencVideoEncoder.cpp
+    )
 else()
     message(FATAL_ERROR
         "The ${CMAKE_SYSTEM_NAME} runtime backend is scaffold-only in this pass. "
@@ -79,6 +86,23 @@ if(APPLE)
     target_compile_definitions(oxrsys_runtime PRIVATE
         XR_USE_GRAPHICS_API_METAL
     )
+endif()
+
+if(WIN32)
+    target_compile_definitions(oxrsys_runtime PRIVATE
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+        _CRT_SECURE_NO_WARNINGS
+    )
+    if(MSVC)
+        target_compile_options(oxrsys_runtime PRIVATE /utf-8)
+    endif()
+    # NVENC is reached through the driver's nvEncodeAPI64.dll at runtime (nothing linked);
+    # the struct layouts come from V-Sekai-fire/nv-codec-headers.
+    target_include_directories(oxrsys_runtime PRIVATE
+        ${CMAKE_SOURCE_DIR}/third_party/nv-codec-headers/include
+    )
+    list(APPEND OXRSYS_RUNTIME_LINK_LIBRARIES ws2_32 d3d11 dxgi)
 endif()
 
 # NOTE: We intentionally do NOT link against Vulkan::Vulkan.

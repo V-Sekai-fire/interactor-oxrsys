@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 #include "VideoEncoder.h"
+#include <oxrsys/protocol/Protocol.h>
 #include "Config.h"
 
 #include <spdlog/spdlog.h>
@@ -63,6 +64,11 @@ void FillBlackYuv420Frame(AVFrame* frame)
 } // namespace
 
 VideoEncoder::VideoEncoder() = default;
+
+uint8_t VideoEncoder::StreamCodec()
+{
+    return static_cast<uint8_t>(oxr::protocol::VideoCodec::H265);
+}
 
 VideoEncoder::~VideoEncoder()
 {

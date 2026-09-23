@@ -72,8 +72,9 @@ public:
     static void ReleaseTextureSlice(void* textureSlice);
 
     // Acquire a backend-native image source for streaming. Dynamic Metal swapchains
-    // prefer a release-time staging snapshot; Vulkan currently returns the live
-    // image handle as the Linux readback path is still scaffolded.
+    // prefer a release-time staging snapshot; Windows Vulkan copies the slice into a
+    // D3D11 eye texture for NVENC (Win32EyeImage); Linux Vulkan still returns the live
+    // image handle as its readback path is scaffolded.
     FrameImageSource GetLastReleasedFrameImageSource(uint32_t arrayIndex) const;
 
     uint32_t GetArraySize() const
@@ -128,6 +129,9 @@ private:
     void* vkDevice_ = nullptr;
     std::vector<uint64_t> vkImages_;   // VkImage handles
     std::vector<uint64_t> vkMemories_; // VkDeviceMemory handles
+
+    // Windows: shared D3D11 textures and eye textures (D3D11Interop.cpp)
+    std::shared_ptr<void> win32State_ = {};
 
     uint32_t nextAcquireIndex_ = 0;
     uint32_t lastReleasedIndex_ = 0;

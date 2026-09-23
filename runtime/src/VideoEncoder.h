@@ -84,8 +84,12 @@ public:
 
     bool IsInitialized() const
     {
-        return videoToolbox_.session != nullptr || ffmpeg_.codecContext != nullptr;
+        return videoToolbox_.session != nullptr || ffmpeg_.codecContext != nullptr || nvenc_ != nullptr;
     }
+
+    // The bitstream this build emits (oxr::protocol::VideoCodec): AV1 from NVENC on
+    // Windows, H.265 elsewhere.
+    static uint8_t StreamCodec();
 
     // Stats
     uint32_t GetEncodedFrameCount() const { return frameCount_; }
@@ -132,6 +136,7 @@ private:
     GraphicsContext graphicsContext_ = {};
     VideoToolboxState videoToolbox_ = {};
     FfmpegState ffmpeg_ = {};
+    void* nvenc_ = nullptr;           // NvencState* (NvencVideoEncoder.cpp)
 
     uint32_t width_ = 0;       // Total encoded width (may be 2x eye width for stereo)
     uint32_t height_ = 0;

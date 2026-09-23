@@ -374,6 +374,11 @@ static void CompressionOutputCallback(void* /*outputCallbackRefCon*/,
 
 VideoEncoder::VideoEncoder() = default;
 
+uint8_t VideoEncoder::StreamCodec()
+{
+    return static_cast<uint8_t>(oxr::protocol::VideoCodec::H265);
+}
+
 VideoEncoder::~VideoEncoder()
 {
     Shutdown();

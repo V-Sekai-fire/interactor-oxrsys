@@ -13,6 +13,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -1084,7 +1085,7 @@ void StreamingServer::EncodeThread()
                 {
                     nalHeader.flags |= oxr::protocol::VIDEO_FLAG_KEYFRAME;
                 }
-                nalHeader.codec = static_cast<uint8_t>(oxr::protocol::VideoCodec::H265);
+                nalHeader.codec = VideoEncoder::StreamCodec();
 
                 memcpy(nal.tcpPayload.data(), &nalHeader, sizeof(nalHeader));
                 memcpy(nal.tcpPayload.data() + sizeof(nalHeader), nalData, nalSize);
@@ -1909,7 +1910,7 @@ void StreamingServer::SendRenderPosePacket(const EncodedVideoFrame& frame)
     poseHeader.totalPackets = 0;
     poseHeader.payloadSize = sizeof(posePayload);
     poseHeader.flags = oxr::protocol::VIDEO_FLAG_RENDER_POSE;
-    poseHeader.codec = static_cast<uint8_t>(oxr::protocol::VideoCodec::H265);
+    poseHeader.codec = VideoEncoder::StreamCodec();
     poseHeader.presentationTimeNs = frame.timestampNs;
 
     uint8_t buf[sizeof(poseHeader) + sizeof(posePayload)];
@@ -1972,7 +1973,7 @@ void StreamingServer::SendNalUnit(const std::shared_ptr<PacketDispatchState>& di
         {
             nalHeader.flags |= oxr::protocol::VIDEO_FLAG_KEYFRAME;
         }
-        nalHeader.codec = static_cast<uint8_t>(oxr::protocol::VideoCodec::H265);
+        nalHeader.codec = VideoEncoder::StreamCodec();
 
         std::lock_guard<std::mutex> sendLock(dispatchState->sendMutex);
         if (!SendTcpRecordParts(videoSocket,
@@ -2045,7 +2046,7 @@ void StreamingServer::SendNalUnit(const std::shared_ptr<PacketDispatchState>& di
         {
             header.flags |= oxr::protocol::VIDEO_FLAG_END_OF_FRAME;
         }
-        header.codec = static_cast<uint8_t>(oxr::protocol::VideoCodec::H265);
+        header.codec = VideoEncoder::StreamCodec();
         header.presentationTimeNs = timestampNs;
 
         size_t packetSize = sizeof(header) + payloadSize;
@@ -2099,7 +2100,7 @@ void StreamingServer::SendNalUnit(const std::shared_ptr<PacketDispatchState>& di
             {
                 fecHeader.flags |= oxr::protocol::VIDEO_FLAG_KEYFRAME;
             }
-            fecHeader.codec = static_cast<uint8_t>(oxr::protocol::VideoCodec::H265);
+            fecHeader.codec = VideoEncoder::StreamCodec();
             fecHeader.presentationTimeNs = timestampNs;
 
             memcpy(packetBuffer, &fecHeader, sizeof(fecHeader));
@@ -2217,7 +2218,7 @@ void StreamingServer::HandleNackRequest(const oxr::protocol::NackRequest& reques
     std::string clientIp;
     SocketHandle videoSocket = oxrsys::runtime_socket::InvalidSocket;
     std::vector<RetransmitPacket> retransmitPackets;
-    retransmitPackets.reserve(static_cast<size_t>(__builtin_popcountll(request.missingBitmask)));
+    retransmitPackets.reserve(static_cast<size_t>(std::popcount(static_cast<uint64_t>(request.missingBitmask))));
 
     {
         std::lock_guard<std::mutex> lock(packetDispatchState_->mutex);
@@ -2297,7 +2298,7 @@ void StreamingServer::HandleNackRequest(const oxr::protocol::NackRequest& reques
     {
         videoUdpRetransmittedPackets_.fetch_add(retransmitted);
         spdlog::info("StreamingServer: NACK retransmitted {}/{} packets for frame {}",
-                      retransmitted, __builtin_popcountll(request.missingBitmask),
+                      retransmitted, std::popcount(static_cast<uint64_t>(request.missingBitmask)),
                       request.frameIndex);
     }
 }

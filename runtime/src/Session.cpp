@@ -8,6 +8,10 @@
 #include "Space.h"
 #include "InputManager.h"
 #include "StreamingServer.h"
+#include "D3D11Interop.h"
+#ifdef GetCurrentTime
+#undef GetCurrentTime // winbase.h macro; clashes with Session::GetCurrentTime
+#endif
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <cmath>
@@ -463,6 +467,14 @@ XrResult Session::EndFrame(const XrFrameEndInfo* frameEndInfo)
     // Extract submitted eye sources for streaming. Missing streaming sources do
     // not invalidate the OpenXR frame; they only skip this frame's video encode.
     FrameSource frameSource = {};
+    const bool streamFrame = streamingServer_ && streamingServer_->IsClientConnected();
+#if defined(_WIN32) && defined(XR_USE_GRAPHICS_API_VULKAN)
+    // Order the D3D11 staging copies after the app's rendering of this frame.
+    if (streamFrame && graphicsContext_.api == GraphicsApi::Vulkan)
+    {
+        Win32SerializeVulkanFrame(graphicsContext_.vulkan);
+    }
+#endif
 
     for (uint32_t i = 0; i < frameEndInfo->layerCount; i++)
     {
@@ -477,7 +489,7 @@ XrResult Session::EndFrame(const XrFrameEndInfo* frameEndInfo)
             case XR_TYPE_COMPOSITION_LAYER_PROJECTION:
             {
                 XrResult result = ValidateProjectionLayer(
-                    *reinterpret_cast<const XrCompositionLayerProjection*>(layer), frameSource);
+                    *reinterpret_cast<const XrCompositionLayerProjection*>(layer), frameSource, streamFrame);
                 if (result != XR_SUCCESS)
                 {
                     return result;
@@ -576,7 +588,7 @@ XrResult Session::ValidateSwapchainSubImage(const XrSwapchainSubImage& subImage)
 }
 
 XrResult Session::ValidateProjectionLayer(const XrCompositionLayerProjection& layer,
-                                          FrameSource& frameSource) const
+                                          FrameSource& frameSource, bool extractSources) const
 {
     auto* space = Runtime::Get().FromHandle<Space>(reinterpret_cast<uint64_t>(layer.space));
     if (space == nullptr || space->GetSession() != this)
@@ -606,6 +618,10 @@ XrResult Session::ValidateProjectionLayer(const XrCompositionLayerProjection& la
             return subImageResult;
         }
 
+        if (!extractSources)
+        {
+            continue;
+        }
         auto* swapchain = Runtime::Get().FromHandle<Swapchain>(reinterpret_cast<uint64_t>(view.subImage.swapchain));
         FrameImageSource imageSource =
             swapchain->GetLastReleasedFrameImageSource(view.subImage.imageArrayIndex);
@@ -755,6 +771,10 @@ XrResult Session::CreateSwapchain(const XrSwapchainCreateInfo* createInfo, XrSwa
     }
 
     auto sc = std::make_unique<Swapchain>(graphicsContext_, createInfo);
+    if (sc->GetImageCount() == 0)
+    {
+        return XR_ERROR_SWAPCHAIN_FORMAT_UNSUPPORTED;
+    }
     *swapchain = reinterpret_cast<XrSwapchain>(sc->GetHandle());
     swapchains_.push_back(std::move(sc));
     return XR_SUCCESS;
