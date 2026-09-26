@@ -92,46 +92,84 @@ bool VideoEncoder::Initialize(uint32_t width, uint32_t height, uint32_t fps,
     inFlightFrameCount_.store(0);
     frameNumberCounter_.store(0);
 
-    const AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_HEVC);
-    if (codec == nullptr)
-    {
-        spdlog::error("FFmpegVideoEncoder: no HEVC encoder available");
-        return false;
-    }
+    const std::string encoderPreset = Config::Get().GetValues().encoderPreset;
 
-    AVCodecContext* context = avcodec_alloc_context3(codec);
+    // Prefer a hardware HEVC encoder so the per-frame encode does not consume the
+    // frame budget (software x265 costs ~11ms/frame, capping a 90Hz loop on its
+    // own). Try NVENC first, then fall back to the software encoder when no GPU
+    // encoder opens, so a GPU-less host still runs.
+    const char* candidateNames[] = {"hevc_nvenc", nullptr};
+    AVCodecContext* context = nullptr;
+    const AVCodec* codec = nullptr;
+    bool hardware = false;
+    for (int attempt = 0; attempt < 2 && context == nullptr; ++attempt)
+    {
+        codec = candidateNames[attempt] != nullptr ? avcodec_find_encoder_by_name(candidateNames[attempt])
+                                                    : avcodec_find_encoder(AV_CODEC_ID_HEVC);
+        if (codec == nullptr)
+        {
+            continue;
+        }
+        hardware = candidateNames[attempt] != nullptr;
+
+        AVCodecContext* candidate = avcodec_alloc_context3(codec);
+        if (candidate == nullptr)
+        {
+            spdlog::error("FFmpegVideoEncoder: failed to allocate codec context");
+            return false;
+        }
+
+        candidate->width = static_cast<int>(width_);
+        candidate->height = static_cast<int>(height_);
+        candidate->time_base = AVRational{1, static_cast<int>(fps_)};
+        candidate->framerate = AVRational{static_cast<int>(fps_), 1};
+        candidate->pix_fmt = AV_PIX_FMT_YUV420P;
+        candidate->bit_rate = static_cast<int64_t>(bitrateMbps_) * 1000 * 1000;
+        candidate->gop_size =
+            static_cast<int>(std::max(Config::Get().GetValues().keyframeIntervalSec * fps_, 1u));
+        candidate->max_b_frames = 0;
+
+        if (hardware)
+        {
+            // NVENC presets are p1(fastest)..p7; tune ull is ultra-low-latency.
+            const char* nvencPreset = "p4";
+            if (encoderPreset == "speed")
+            {
+                nvencPreset = "p1";
+            }
+            else if (encoderPreset == "quality")
+            {
+                nvencPreset = "p6";
+            }
+            av_opt_set(candidate->priv_data, "preset", nvencPreset, 0);
+            av_opt_set(candidate->priv_data, "tune", "ull", 0);
+        }
+        else
+        {
+            const char* ffmpegPreset = "superfast";
+            if (encoderPreset == "speed")
+            {
+                ffmpegPreset = "ultrafast";
+            }
+            else if (encoderPreset == "quality")
+            {
+                ffmpegPreset = "veryfast";
+            }
+            av_opt_set(candidate->priv_data, "preset", ffmpegPreset, 0);
+            av_opt_set(candidate->priv_data, "tune", "zerolatency", 0);
+        }
+
+        if (avcodec_open2(candidate, codec, nullptr) < 0)
+        {
+            spdlog::warn("FFmpegVideoEncoder: {} did not open, trying the next encoder", codec->name);
+            avcodec_free_context(&candidate);
+            continue;
+        }
+        context = candidate;
+    }
     if (context == nullptr)
     {
-        spdlog::error("FFmpegVideoEncoder: failed to allocate codec context");
-        return false;
-    }
-
-    context->width = static_cast<int>(width_);
-    context->height = static_cast<int>(height_);
-    context->time_base = AVRational{1, static_cast<int>(fps_)};
-    context->framerate = AVRational{static_cast<int>(fps_), 1};
-    context->pix_fmt = AV_PIX_FMT_YUV420P;
-    context->bit_rate = static_cast<int64_t>(bitrateMbps_) * 1000 * 1000;
-    context->gop_size = static_cast<int>(std::max(Config::Get().GetValues().keyframeIntervalSec * fps_, 1u));
-    context->max_b_frames = 0;
-
-    const std::string encoderPreset = Config::Get().GetValues().encoderPreset;
-    const char* ffmpegPreset = "superfast";
-    if (encoderPreset == "speed")
-    {
-        ffmpegPreset = "ultrafast";
-    }
-    else if (encoderPreset == "quality")
-    {
-        ffmpegPreset = "veryfast";
-    }
-    av_opt_set(context->priv_data, "preset", ffmpegPreset, 0);
-    av_opt_set(context->priv_data, "tune", "zerolatency", 0);
-
-    if (avcodec_open2(context, codec, nullptr) < 0)
-    {
-        spdlog::error("FFmpegVideoEncoder: failed to open HEVC encoder {}", codec->name);
-        avcodec_free_context(&context);
+        spdlog::error("FFmpegVideoEncoder: no HEVC encoder available");
         return false;
     }
 
@@ -162,8 +200,9 @@ bool VideoEncoder::Initialize(uint32_t width, uint32_t height, uint32_t fps,
     ffmpeg_.frame = frame;
     ffmpeg_.packet = packet;
 
-    spdlog::info("FFmpegVideoEncoder: initialized HEVC encoder {}x{} @ {}Hz {}Mbps preset={} ({})",
-                 width_, height_, fps_, bitrateMbps_, encoderPreset, ffmpegPreset);
+    spdlog::info("FFmpegVideoEncoder: initialized HEVC encoder {} ({}) {}x{} @ {}Hz {}Mbps preset={}",
+                 codec->name, hardware ? "hardware" : "software", width_, height_, fps_, bitrateMbps_,
+                 encoderPreset);
     return true;
 }
 
