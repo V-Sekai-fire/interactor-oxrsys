@@ -122,6 +122,7 @@ Current codec identifiers:
 - `H265`
 - `H264`
 - `AV1`
+- `CineForm` (the Linux runtime; every sample is intra-only)
 
 USB TCP video sends complete encoded NAL units as `VideoNal` records. It does not use UDP fragmentation, FEC, or NACK recovery.
 

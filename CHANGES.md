@@ -29,6 +29,7 @@ This file tracks user-facing, integration-facing, and runtime-relevant changes f
 
 ### Changed
 
+- Changed the Linux runtime's streaming encoder from FFmpeg to the CineForm SDK (Apache-2.0 OR MIT, fetched with FetchContent). The runtime no longer links FFmpeg; samples are intra-only and tagged `VideoCodec::CineForm`. No headset client decodes CineForm yet.
 - Moved the repository toward the OXRSys cross-platform layout, including `clients/Android/android-vr/`, `clients/Apple/common/`, and `clients/Qt/`.
 - Changed the runtime graphics plumbing to use typed `GraphicsContext` and `FrameSource` data across sessions, swapchains, streaming, and encoders.
 - Kept Vulkan loader usage app-owned: the runtime resolves Vulkan entry points from the application-provided dispatch path or already-loaded process symbols without directly linking or loading the Vulkan loader.

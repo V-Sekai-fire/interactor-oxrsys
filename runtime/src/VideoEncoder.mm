@@ -406,6 +406,11 @@ VideoEncoder::~VideoEncoder()
     Shutdown();
 }
 
+oxr::protocol::VideoCodec VideoEncoder::StreamCodec()
+{
+    return oxr::protocol::VideoCodec::H265;
+}
+
 bool VideoEncoder::SupportsFoveatedEncoding(const GraphicsContext& graphicsContext)
 {
     id<MTLDevice> device = (__bridge id<MTLDevice>)graphicsContext.metalDevice;

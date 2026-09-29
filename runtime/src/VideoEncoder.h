@@ -11,11 +11,14 @@
 
 #include "GraphicsTypes.h"
 
+#include <oxrsys/protocol/Protocol.h>
+
 /**
- * H.265 video encoder facade.
+ * Video encoder facade.
  *
- * Apple builds use VideoToolbox with Metal textures. Linux builds use FFmpeg
- * and keep backend-specific graphics readback state behind GraphicsContext.
+ * Apple builds encode H.265 with VideoToolbox and Metal textures. Linux builds
+ * encode CineForm with the CineForm SDK and keep backend-specific graphics
+ * readback state behind GraphicsContext.
  */
 class VideoEncoder
 {
@@ -65,6 +68,9 @@ public:
     void SetFoveationSettings(const FoveationSettings& settings) { foveationSettings_ = settings; }
     static bool SupportsFoveatedEncoding(const GraphicsContext& graphicsContext);
 
+    // The codec this backend's samples are in, as sent in the video headers.
+    static oxr::protocol::VideoCodec StreamCodec();
+
     // Encode one backend-native texture/image source.
     // The callback is invoked for each NAL unit produced
     bool Encode(FrameImageSource imageSource, int64_t timestampNs, OnNalUnitCallback callback,
@@ -84,7 +90,7 @@ public:
 
     bool IsInitialized() const
     {
-        return videoToolbox_.session != nullptr || ffmpeg_.codecContext != nullptr;
+        return videoToolbox_.session != nullptr || cineform_.codec != nullptr;
     }
 
     // Stats
@@ -122,16 +128,15 @@ private:
         void* foveationSampler = nullptr;  // id<MTLSamplerState>
     };
 
-    struct FfmpegState
+    struct CineFormState
     {
-        void* codecContext = nullptr; // AVCodecContext*
-        void* frame = nullptr;        // AVFrame*
-        void* packet = nullptr;       // AVPacket*
+        void* codec = nullptr;        // CineFormFrameCodec*
+        std::vector<uint8_t> frame;   // BGRA source frame
     };
 
     GraphicsContext graphicsContext_ = {};
     VideoToolboxState videoToolbox_ = {};
-    FfmpegState ffmpeg_ = {};
+    CineFormState cineform_ = {};
 
     uint32_t width_ = 0;       // Total encoded width (may be 2x eye width for stereo)
     uint32_t height_ = 0;

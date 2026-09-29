@@ -7,7 +7,7 @@ client, and Linux-first Qt frontends.
 The repository also includes a native SwiftUI macOS Home app and a Qt Home app for compatible app
 launching, runtime selection, runtime configuration, and runtime registration workflows.
 
-**Current state:** Metal/core runtime, Vulkan interop, Linux Vulkan/FFmpeg scaffolding,
+**Current state:** Metal/core runtime, Vulkan interop, Linux Vulkan/CineForm scaffolding,
 typed internal graphics/frame plumbing, release-time Metal streaming snapshots,
 portable platform/socket helpers,
 controller and hand input paths, loader-backed
@@ -66,7 +66,7 @@ As of March 17, 2026, the pinned non-interactive OpenXR-CTS baseline is fully gr
 - **Always build and verify before declaring success** — run the macOS build + tests and/or Android build as appropriate before saying everything works
 - **Always update `README.md`, `AGENTS.md`, and the relevant files in `docs/` when making significant project changes**
 - Keep SwiftUI Home and Qt Home companion behavior in sync when changing shared Home workflows; only diverge for frontend-specific changes or when the user explicitly asks for a feature to be limited to one frontend.
-- Core C++ dependencies are fetched via CMake FetchContent; Qt, FFmpeg, Vulkan SDKs, and platform SDKs are system/toolchain dependencies.
+- Core C++ dependencies, including the CineForm SDK the Linux runtime encodes with, are fetched via CMake FetchContent; Qt, Vulkan SDKs, and platform SDKs are system/toolchain dependencies. FFmpeg is only an optional dependency of the Qt simulator's preview; the runtime does not link it.
 - Product versions are centralized in `config/OXRSysVersion.xcconfig`; do not hardcode
   marketing versions or build numbers in CMake, Xcode, Gradle, or native client code.
 - Commit messages must read naturally and must not mention Codex or include `[codex]`.
