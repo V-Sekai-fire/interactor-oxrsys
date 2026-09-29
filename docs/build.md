@@ -65,7 +65,7 @@ Key outputs in the selected build directory. With the default build these are un
 - `compile_commands.json` symlinked at the project root for editor integration
 
 All third-party C++ dependencies are fetched through CMake `FetchContent`.
-Linux additionally requires system/toolchain packages for Vulkan headers, FFmpeg development libraries, and pkg-config.
+Linux additionally requires system/toolchain packages for Vulkan headers, libuuid, and pkg-config. The Linux runtime encodes its stream with the CineForm SDK, which FetchContent builds as a static library; `scripts/linux_check_runtime_linkage.sh <liboxrsys-runtime.so> --self-test` checks that the runtime links no FFmpeg library.
 
 Windows is a scaffold only in this pass; do not treat Windows runtime builds as an acceptance gate yet.
 

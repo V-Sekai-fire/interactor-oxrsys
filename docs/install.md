@@ -40,22 +40,21 @@ Linux runtime and Qt frontend builds need equivalent distro packages for:
 
 - CMake, Ninja, and a C++20 compiler
 - Vulkan headers
-- FFmpeg development libraries: `libavcodec`, `libavutil`, `libswscale`
+- libuuid development files
 - pkg-config
 - Qt 6 Core, Widgets, and Network
 - adb / Android Platform Tools for starting an ADB server, logcat, and USB fallback setup
 
-On Fedora with RPM Fusion FFmpeg packages installed, use the matching RPM Fusion
-development package:
+On Fedora:
 
 ```bash
 sudo dnf install cmake ninja-build gcc-c++ pkgconf-pkg-config \
-  vulkan-headers vulkan-loader-devel qt6-qtbase-devel android-tools \
-  ffmpeg-devel
+  vulkan-headers vulkan-loader-devel libuuid-devel qt6-qtbase-devel android-tools
 ```
 
-On Fedora systems that only use Fedora's free FFmpeg package set, use
-`ffmpeg-free-devel` instead of `ffmpeg-devel`.
+The runtime does not use FFmpeg. The Qt simulator's optional video preview still decodes
+H.265 through FFmpeg when its development libraries are installed, so it does not show the
+Linux runtime's CineForm stream.
 
 ## Android SDK And NDK
 

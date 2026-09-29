@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Builds the Linux runtime with its CineForm encoder, runs the CineForm round trip
+# with its corrupted-sample controls, and checks the runtime links no FFmpeg library.
+name: linux-runtime
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: linux-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends ninja-build pkg-config \
+            libvulkan-dev uuid-dev libx11-dev libx11-xcb-dev libxcb1-dev libxrandr-dev patchelf
+      - name: Configure
+        run: cmake --preset linux-native -DOXRSYS_BUILD_QT_FRONTENDS=OFF
+      - name: Build
+        run: cmake --build build/linux-native --target oxrsys_runtime oxrsys_cineform_tests
+      - name: CineForm round trip
+        run: ctest --test-dir build/linux-native -R '^oxrsys_cineform_tests$' --output-on-failure -V
+      - name: No FFmpeg in the runtime
+        run: scripts/linux_check_runtime_linkage.sh build/linux-native/runtime/liboxrsys-runtime.so --self-test

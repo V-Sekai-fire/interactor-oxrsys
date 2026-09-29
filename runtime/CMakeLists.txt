@@ -27,7 +27,8 @@ if(APPLE)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(APPEND OXRSYS_RUNTIME_SOURCES
         src/SwapchainVulkan.cpp
-        src/FfmpegVideoEncoder.cpp
+        src/CineFormFrameCodec.cpp
+        src/CineFormVideoEncoder.cpp
     )
 else()
     message(FATAL_ERROR
@@ -49,14 +50,8 @@ set(OXRSYS_RUNTIME_LINK_LIBRARIES
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
-        libavcodec
-        libavutil
-        libswscale
-    )
     list(APPEND OXRSYS_RUNTIME_LINK_LIBRARIES
-        PkgConfig::FFMPEG
+        oxrsys_cineform
     )
 endif()
 
@@ -109,6 +104,12 @@ set_target_properties(oxrsys_runtime PROPERTIES
     OUTPUT_NAME oxrsys-runtime
     PREFIX "lib"
 )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Keep the CineForm SDK's symbols out of the runtime's exports, so a host that
+    # loads its own copy of the SDK does not bind to ours.
+    target_link_options(oxrsys_runtime PRIVATE "LINKER:--exclude-libs,ALL")
+endif()
 
 if(APPLE)
     set_target_properties(oxrsys_runtime PROPERTIES

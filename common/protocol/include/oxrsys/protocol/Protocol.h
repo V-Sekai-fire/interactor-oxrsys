@@ -224,6 +224,7 @@ enum class VideoCodec : uint32_t
     H265 = 0,
     H264 = 1,
     AV1 = 2,
+    CineForm = 3,
 };
 
 struct VideoPacketHeader

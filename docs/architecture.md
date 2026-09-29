@@ -2,7 +2,7 @@
 
 ## Overview
 
-OXRSys Runtime is a cross-platform OpenXR runtime in progress. macOS is the mature path, Linux is being added through Vulkan + FFmpeg scaffolding, and Windows is still a runtime-backend scaffold. Shared platform, config, status, and socket helpers are kept portable so platform-specific backends can be added without spreading OS calls through the runtime. The runtime is discovered by the OpenXR loader through the generated `oxrsys-runtime.json` manifest.
+OXRSys Runtime is a cross-platform OpenXR runtime in progress. macOS is the mature path, Linux is being added through Vulkan + CineForm scaffolding, and Windows is still a runtime-backend scaffold. Shared platform, config, status, and socket helpers are kept portable so platform-specific backends can be added without spreading OS calls through the runtime. The runtime is discovered by the OpenXR loader through the generated `oxrsys-runtime.json` manifest.
 
 ## Repository Layout
 
@@ -60,7 +60,9 @@ Vulkan support is exposed through `XR_KHR_vulkan_enable` and `XR_KHR_vulkan_enab
 
 The v2 path stores the app's `pfnGetInstanceProcAddr`. The v1 path first reuses that dispatch if available, then looks for `vkGetInstanceProcAddr` only in already-loaded process modules: `dlsym(RTLD_DEFAULT, ...)` on POSIX and `GetModuleHandleW(L"vulkan-1.dll")` plus `GetProcAddress` on Windows. It intentionally does not load a Vulkan loader itself.
 
-On Apple, Vulkan images can use `VK_EXT_metal_objects` to bridge Vulkan-backed images to Metal textures. On Linux, the first-pass Vulkan swapchain allocates Vulkan images directly and the FFmpeg encoder path is wired, with real Vulkan image readback still pending.
+On Apple, Vulkan images can use `VK_EXT_metal_objects` to bridge Vulkan-backed images to Metal textures. On Linux, the first-pass Vulkan swapchain allocates Vulkan images directly and the CineForm encoder path is wired, with real Vulkan image readback still pending.
+
+The Linux encoder is the CineForm SDK (Apache-2.0 OR MIT, fetched with FetchContent and linked statically with its symbols kept out of the runtime's exports). CineForm is an intra-only wavelet codec with no rate control: every sample is a keyframe, `ForceKeyframe` and `SetBitrate` change nothing, and the encoder preset picks the quality (`speed` low, `balanced` medium, `quality` high). Video headers carry `VideoCodec::CineForm`. No client decodes it yet: `clients/Android/android-vr` asks for H.265 and hands it to the platform's hardware decoder, the viewers under `clients/Apple` decode H.265, and the Qt simulator's preview decodes H.265 through FFmpeg. A client for this stream needs the CineForm SDK's decoder (the SDK builds for arm64) and a transport budget for intra-only frames, which are several times larger than H.265 inter frames at the same quality.
 
 ## Input And Actions
 
