@@ -14,6 +14,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -2903,7 +2904,7 @@ void StreamingServer::HandleNackRequest(const oxr::protocol::NackRequest& reques
     std::string clientIp;
     SocketHandle videoSocket = oxrsys::runtime_socket::InvalidSocket;
     std::vector<RetransmitPacket> retransmitPackets;
-    retransmitPackets.reserve(static_cast<size_t>(__builtin_popcountll(request.missingBitmask)));
+    retransmitPackets.reserve(static_cast<size_t>(std::popcount(static_cast<uint64_t>(request.missingBitmask))));
 
     {
         std::lock_guard<std::mutex> lock(packetDispatchState_->mutex);
@@ -2983,7 +2984,7 @@ void StreamingServer::HandleNackRequest(const oxr::protocol::NackRequest& reques
     {
         videoUdpRetransmittedPackets_.fetch_add(retransmitted);
         spdlog::info("StreamingServer: NACK retransmitted {}/{} packets for frame {}",
-                      retransmitted, __builtin_popcountll(request.missingBitmask),
+                      retransmitted, std::popcount(static_cast<uint64_t>(request.missingBitmask)),
                       request.frameIndex);
     }
 }

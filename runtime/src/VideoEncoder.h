@@ -90,7 +90,7 @@ public:
 
     bool IsInitialized() const
     {
-        return videoToolbox_.session != nullptr || cineform_.codec != nullptr;
+        return videoToolbox_.session != nullptr || cineform_.codec != nullptr || nvenc_ != nullptr;
     }
 
     // Stats
@@ -137,6 +137,7 @@ private:
     GraphicsContext graphicsContext_ = {};
     VideoToolboxState videoToolbox_ = {};
     CineFormState cineform_ = {};
+    void* nvenc_ = nullptr;           // NvencState* (NvencVideoEncoder.cpp)
 
     uint32_t width_ = 0;       // Total encoded width (may be 2x eye width for stereo)
     uint32_t height_ = 0;

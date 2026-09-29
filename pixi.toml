@@ -1,0 +1,9 @@
+[workspace]
+name = "oxrsys-windows"
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[dependencies]
+cmake = ">=3.28"
+ninja = "*"
+qt6-main = "*"

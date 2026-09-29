@@ -15,6 +15,17 @@
 
 #include <oxrsys/protocol/Protocol.h>
 
+// Video preview: FFmpeg HEVC (Linux, macOS) or NVDEC AV1 (Windows).
+#if OXRSYS_QT_SIMULATOR_HAS_FFMPEG || OXRSYS_QT_SIMULATOR_HAS_NVDEC
+#define OXRSYS_QT_SIMULATOR_HAS_VIDEO 1
+#else
+#define OXRSYS_QT_SIMULATOR_HAS_VIDEO 0
+#endif
+
+#if OXRSYS_QT_SIMULATOR_HAS_NVDEC
+#include "NvdecDecoder.h"
+#endif
+
 #if OXRSYS_QT_SIMULATOR_HAS_FFMPEG
 struct AVCodecContext;
 struct AVFrame;
@@ -89,7 +100,7 @@ private:
                            int64_t decodeStartNs,
                            int64_t decodeEndNs);
     int64_t monotonicNowNs() const;
-#if OXRSYS_QT_SIMULATOR_HAS_FFMPEG
+#if OXRSYS_QT_SIMULATOR_HAS_VIDEO
     bool ensureVideoDecoder();
     void resetVideoDecoder();
     bool decodeVideoFrame(const AssembledVideoFrame& frame);
@@ -136,6 +147,11 @@ private:
     AVPacket* decodePacket_ = nullptr;
     SwsContext* swsContext_ = nullptr;
 #endif
+#if OXRSYS_QT_SIMULATOR_HAS_NVDEC
+    NvdecDecoder nvdec_;
+#endif
+    bool autoConnect_ = false;
+    QString snapshotPath_;
     QElapsedTimer poseClock_;
     QSet<int> pressedKeys_;
     QPointF lastMousePosition_;
