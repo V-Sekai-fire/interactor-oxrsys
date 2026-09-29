@@ -67,7 +67,7 @@ Key outputs in the selected build directory. With the default build these are un
 All third-party C++ dependencies are fetched through CMake `FetchContent`.
 Linux additionally requires system/toolchain packages for Vulkan headers, libuuid, and pkg-config. The Linux runtime encodes its stream with the CineForm SDK, which FetchContent builds as a static library; `scripts/linux_check_runtime_linkage.sh <liboxrsys-runtime.so> --self-test` checks that the runtime links no FFmpeg library.
 
-Windows is a scaffold only in this pass; do not treat Windows runtime builds as an acceptance gate yet.
+Windows builds with MSVC through `scripts/windows_build.ps1`. Vulkan apps render into shared D3D11 textures and the runtime streams them with NVENC AV1, loaded from the NVIDIA driver at run time.
 
 ## Versioning
 

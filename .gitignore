@@ -119,3 +119,6 @@ clients/Android/android-vr/app/.cxx
 clients/oxrsys-android/.gradle
 clients/Apple/common/OXRSysSimulator/.build
 clients/Apple/common/OXRSysStreaming/.build
+
+# --- pixi environment (Windows build) ---
+.pixi/

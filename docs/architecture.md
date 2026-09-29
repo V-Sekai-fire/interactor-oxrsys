@@ -2,7 +2,7 @@
 
 ## Overview
 
-OXRSys Runtime is a cross-platform OpenXR runtime in progress. macOS is the mature path, Linux is being added through Vulkan + CineForm scaffolding, and Windows is still a runtime-backend scaffold. Shared platform, config, status, and socket helpers are kept portable so platform-specific backends can be added without spreading OS calls through the runtime. The runtime is discovered by the OpenXR loader through the generated `oxrsys-runtime.json` manifest.
+OXRSys Runtime is a cross-platform OpenXR runtime in progress. macOS is the mature path, Linux is being added through Vulkan + CineForm scaffolding, and Windows renders Vulkan apps into shared D3D11 textures and streams them with NVENC AV1. Shared platform, config, status, and socket helpers are kept portable so platform-specific backends can be added without spreading OS calls through the runtime. The runtime is discovered by the OpenXR loader through the generated `oxrsys-runtime.json` manifest.
 
 ## Repository Layout
 

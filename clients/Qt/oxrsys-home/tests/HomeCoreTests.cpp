@@ -650,8 +650,11 @@ int main(int argc, char** argv)
         testHomeModelTransportRefreshIsAsyncWithSlowAdb();
         testApplicationLogFilterDropsAppleShortcutNoise();
         testRuntimeActivityParsing();
+#if !defined(Q_OS_WIN)
+        // .desktop launchers, .app bundles and exec bits are not Windows concepts.
         testDesktopInspection();
         testMacAppInspection();
+#endif
         testLauncherStore();
         testShellSplitting();
         testTerminalLaunchScript();

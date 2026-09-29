@@ -3,6 +3,7 @@
 #include "Swapchain.h"
 #include "Runtime.h"
 #include "VulkanDispatch.h"
+#include "D3D11Interop.h"
 
 #include <spdlog/spdlog.h>
 #include <vulkan/vulkan.h>
@@ -146,6 +147,21 @@ void Swapchain::InitVulkan(void* /*metalDevice*/, const VulkanGraphicsContext& v
         return;
     }
 
+#if defined(_WIN32)
+    // Shared D3D11 textures imported into the app's device (D3D11Interop.cpp).
+    win32State_ = Win32CreateSwapchainImages(vulkanContext, *createInfo, imageCount_, vkImages_);
+    if (!win32State_)
+    {
+        imageCount_ = 0;
+    }
+    textures_.assign(imageCount_, nullptr);
+    imageStates_.assign(imageCount_, ImageState::Available);
+    Runtime::Get().RegisterHandle(handle_, this);
+    spdlog::info("OXRSys: Vulkan swapchain (D3D11 shared) created {}x{} format={} arraySize={} images={}",
+                 width_, height_, format_, arraySize_, imageCount_);
+    return;
+#endif
+
     const bool isDepth = IsDepthFormat(format_);
 
     VkImageCreateInfo imageCI{};
@@ -212,6 +228,11 @@ void Swapchain::InitVulkan(void* /*metalDevice*/, const VulkanGraphicsContext& v
 
 Swapchain::~Swapchain()
 {
+#if defined(_WIN32)
+    // The shared state owns the VkImages and their memory; staging leases may outlive it.
+    vkImages_.clear();
+    win32State_.reset();
+#endif
     if (graphicsApi_ == GraphicsApi::Vulkan && vkDevice_ != nullptr)
     {
         VkDevice device = reinterpret_cast<VkDevice>(vkDevice_);
@@ -382,6 +403,10 @@ FrameImageSource Swapchain::GetLastReleasedFrameImageSource(uint32_t arrayIndex)
     {
         return {};
     }
+
+#if defined(_WIN32)
+    return Win32StageSwapchainSlice(win32State_, lastReleasedIndex_, arrayIndex);
+#endif
 
     void* image = reinterpret_cast<void*>(vkImages_[lastReleasedIndex_]);
     if (image == nullptr)
