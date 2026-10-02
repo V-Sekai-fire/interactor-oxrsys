@@ -130,6 +130,7 @@ public struct OXRSysSimulatorView: View {
                 .onKeyUp { model.inputManager.onKeyUp($0) }
                 .onMouseMotion { dx, dy in model.inputManager.onMouseMotion(deltaX: dx, deltaY: dy) }
                 .onScroll { dy in model.inputManager.onScroll(deltaY: dy) }
+                .isMouseCaptured { model.inputManager.mouseCaptured }
                 .onRightMouseDown {
                     let captured = !model.inputManager.mouseCaptured
                     model.inputManager.setMouseCaptured(captured)
@@ -444,6 +445,7 @@ private struct MetalView: NSViewRepresentable {
     var mouseMotionHandler: ((Float, Float) -> Void)?
     var scrollHandler: ((Float) -> Void)?
     var rightMouseDownHandler: (() -> Void)?
+    var mouseCapturedProvider: (() -> Bool)?
 
     func makeNSView(context: Context) -> SimulatorMTKView {
         let view = SimulatorMTKView()
@@ -459,6 +461,7 @@ private struct MetalView: NSViewRepresentable {
         view.mouseMotionHandler = mouseMotionHandler
         view.scrollHandler = scrollHandler
         view.rightMouseDownHandler = rightMouseDownHandler
+        view.mouseCapturedProvider = mouseCapturedProvider
         return view
     }
 
@@ -470,6 +473,7 @@ private struct MetalView: NSViewRepresentable {
         nsView.mouseMotionHandler = mouseMotionHandler
         nsView.scrollHandler = scrollHandler
         nsView.rightMouseDownHandler = rightMouseDownHandler
+        nsView.mouseCapturedProvider = mouseCapturedProvider
         nsView.ensureFirstResponder()
     }
 
@@ -502,6 +506,12 @@ private struct MetalView: NSViewRepresentable {
         copy.rightMouseDownHandler = handler
         return copy
     }
+
+    func isMouseCaptured(_ provider: @escaping () -> Bool) -> MetalView {
+        var copy = self
+        copy.mouseCapturedProvider = provider
+        return copy
+    }
 }
 
 private final class SimulatorMTKView: MTKView {
@@ -510,6 +520,8 @@ private final class SimulatorMTKView: MTKView {
     var mouseMotionHandler: ((Float, Float) -> Void)?
     var scrollHandler: ((Float) -> Void)?
     var rightMouseDownHandler: (() -> Void)?
+    var mouseCapturedProvider: (() -> Bool)?
+    private var activationObservers: [NSObjectProtocol] = []
 
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -536,10 +548,26 @@ private final class SimulatorMTKView: MTKView {
 
     override func mouseMoved(with event: NSEvent) {
         mouseMotionHandler?(Float(event.deltaX), Float(event.deltaY))
+        holdCapturedCursor()
     }
 
     override func mouseDragged(with event: NSEvent) {
         mouseMotionHandler?(Float(event.deltaX), Float(event.deltaY))
+        holdCapturedCursor()
+    }
+
+    // macOS re-associates the cursor on activation changes, so a captured cursor drifts to the
+    // screen edge and the deltas stop; pin it at the view's centre again whenever it has moved.
+    private func holdCapturedCursor() {
+        guard mouseCapturedProvider?() == true, let window,
+              let mainScreen = NSScreen.screens.first else { return }
+        let rect = window.convertToScreen(convert(bounds, to: nil))
+        let centre = CGPoint(x: rect.midX, y: mainScreen.frame.maxY - rect.midY)
+        let cursor = NSEvent.mouseLocation
+        if abs(cursor.x - rect.midX) > 1 || abs(cursor.y - rect.midY) > 1 {
+            CGWarpMouseCursorPosition(centre)
+        }
+        CGAssociateMouseAndMouseCursorPosition(0)
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -557,7 +585,7 @@ private final class SimulatorMTKView: MTKView {
         trackingAreas.forEach { removeTrackingArea($0) }
         addTrackingArea(NSTrackingArea(
             rect: bounds,
-            options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            options: [.mouseMoved, .activeAlways, .inVisibleRect],
             owner: self,
             userInfo: nil
         ))
@@ -566,6 +594,16 @@ private final class SimulatorMTKView: MTKView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         ensureFirstResponder()
+        activationObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        activationObservers = [NSWindow.didBecomeKeyNotification, NSApplication.didBecomeActiveNotification].map {
+            NotificationCenter.default.addObserver(forName: $0, object: nil, queue: .main) { [weak self] _ in
+                self?.holdCapturedCursor()
+            }
+        }
+    }
+
+    deinit {
+        activationObservers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     override func becomeFirstResponder() -> Bool {
