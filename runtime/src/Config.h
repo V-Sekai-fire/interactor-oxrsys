@@ -21,6 +21,7 @@ struct ConfigValues
     float dynamicResolutionMinScale = 0.50f; // Lowest ABR full-mode encode scale
     uint32_t keyframeIntervalSec = 2; // Seconds between forced keyframes
     std::string encoderPreset = "balanced"; // "quality", "balanced", "speed"
+    std::string videoCodec = "h265"; // macOS: "h265" or "pyrowave"
     std::string streamingTransport = "auto"; // "auto", "wifi", "usb_adb"
     std::string foveatedEncodingPreset = "off"; // "off", "light", "medium", "high"
     std::string clientFoveationPreset = "auto"; // "auto", "off", "light", "medium", "high"

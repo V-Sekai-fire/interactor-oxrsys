@@ -12,6 +12,8 @@
 
 #import <spdlog/spdlog.h>
 
+#include <pyrowave_metal.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -406,9 +408,12 @@ VideoEncoder::~VideoEncoder()
     Shutdown();
 }
 
+// The codec the live encoder produces; StreamingServer stamps it on every packet.
+static std::atomic<uint32_t> g_streamCodec{static_cast<uint32_t>(oxr::protocol::VideoCodec::H265)};
+
 oxr::protocol::VideoCodec VideoEncoder::StreamCodec()
 {
-    return oxr::protocol::VideoCodec::H265;
+    return static_cast<oxr::protocol::VideoCodec>(g_streamCodec.load());
 }
 
 bool VideoEncoder::SupportsFoveatedEncoding(const GraphicsContext& graphicsContext)
@@ -571,6 +576,20 @@ bool VideoEncoder::Initialize(uint32_t width, uint32_t height, uint32_t fps,
         slots_[i].inUse = false;
     }
 
+    if (Config::Get().GetValues().videoCodec == "pyrowave")
+    {
+        if (!InitializePyroWave(graphicsContext))
+        {
+            Shutdown();
+            return false;
+        }
+        g_streamCodec.store(static_cast<uint32_t>(oxr::protocol::VideoCodec::PyroWave));
+        spdlog::info("VideoEncoder: Initialized PyroWave encoder {}x{} @ {}fps, {}Mbps ({} bytes per frame, slots={})",
+                      width, height, fps, bitrateMbps, bitrateMbps * 1000000u / 8u / std::max(fps, 1u), SlotCount);
+        return true;
+    }
+    g_streamCodec.store(static_cast<uint32_t>(oxr::protocol::VideoCodec::H265));
+
     NSDictionary* encoderSpec = @{
         (NSString*)kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: @YES,
         (NSString*)kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: @NO,
@@ -666,6 +685,138 @@ bool VideoEncoder::Initialize(uint32_t width, uint32_t height, uint32_t fps,
     return true;
 }
 
+bool VideoEncoder::InitializePyroWave(const GraphicsContext& graphicsContext)
+{
+    pyrowave_device_create_info deviceInfo = {};
+    deviceInfo.mtl_device = graphicsContext.metalDevice;
+    pyrowave_device device = nullptr;
+    pyrowave_result result = pyrowave_device_create(&deviceInfo, &device);
+    if (result != PYROWAVE_SUCCESS)
+    {
+        spdlog::error("VideoEncoder: PyroWave device: {}", pyrowave_result_to_string(result));
+        return false;
+    }
+    pyrowave_.device = device;
+
+    pyrowave_encoder_create_info encoderInfo = {};
+    encoderInfo.device = device;
+    encoderInfo.width = static_cast<int>(width_);
+    encoderInfo.height = static_cast<int>(height_);
+    encoderInfo.chroma = PYROWAVE_CHROMA_SUBSAMPLING_420;
+    pyrowave_encoder encoder = nullptr;
+    result = pyrowave_encoder_create(&encoderInfo, &encoder);
+    if (result != PYROWAVE_SUCCESS)
+    {
+        spdlog::error("VideoEncoder: PyroWave encoder {}x{}: {}", width_, height_, pyrowave_result_to_string(result));
+        return false;
+    }
+    pyrowave_.encoder = encoder;
+
+    VTPixelTransferSessionRef transfer = nullptr;
+    if (VTPixelTransferSessionCreate(kCFAllocatorDefault, &transfer) != noErr)
+    {
+        spdlog::error("VideoEncoder: PyroWave BGRA to NV12 transfer session");
+        return false;
+    }
+    VTSessionSetProperty(transfer, kVTPixelTransferPropertyKey_DestinationYCbCrMatrix,
+                         kCVImageBufferYCbCrMatrix_ITU_R_709_2);
+    VTSessionSetProperty(transfer, kVTPixelTransferPropertyKey_DestinationColorPrimaries,
+                         kCVImageBufferColorPrimaries_ITU_R_709_2);
+    VTSessionSetProperty(transfer, kVTPixelTransferPropertyKey_DestinationTransferFunction,
+                         kCVImageBufferTransferFunction_ITU_R_709_2);
+    pyrowave_.transfer = transfer;
+
+    NSDictionary* poolAttrs = @{
+        (NSString*)kCVPixelBufferWidthKey: @(width_),
+        (NSString*)kCVPixelBufferHeightKey: @(height_),
+        (NSString*)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
+        (NSString*)kCVPixelBufferIOSurfacePropertiesKey: @{},
+    };
+    CVPixelBufferPoolRef pool = nullptr;
+    if (CVPixelBufferPoolCreate(kCFAllocatorDefault, nullptr, (__bridge CFDictionaryRef)poolAttrs, &pool) != kCVReturnSuccess)
+    {
+        spdlog::error("VideoEncoder: PyroWave NV12 pixel buffer pool");
+        return false;
+    }
+    pyrowave_.nv12Pool = pool;
+    return true;
+}
+
+void VideoEncoder::EncodePyroWave(void* pixelBufferRef, void* contextRef)
+{
+    auto* context = static_cast<EncodeFrameContext*>(contextRef);
+    std::lock_guard<std::mutex> lock(pyrowaveMutex_);
+
+    CVPixelBufferRef nv12 = nullptr;
+    if (CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, (CVPixelBufferPoolRef)pyrowave_.nv12Pool, &nv12) != kCVReturnSuccess ||
+        VTPixelTransferSessionTransferImage((VTPixelTransferSessionRef)pyrowave_.transfer,
+                                            (CVPixelBufferRef)pixelBufferRef, nv12) != noErr)
+    {
+        if (nv12 != nullptr)
+        {
+            CVPixelBufferRelease(nv12);
+        }
+        spdlog::warn("VideoEncoder: PyroWave colour conversion failed");
+        FinalizeEncodeFrame(context, true);
+        return;
+    }
+
+    auto encodeStart = Clock::now();
+    pyrowave_gpu_input input = {};
+    input.planes[0] = CVPixelBufferGetIOSurface(nv12);
+    pyrowave_rate_control rate = {};
+    rate.maximum_bitstream_size = static_cast<size_t>(bitrateMbps_) * 1000000u / 8u / std::max(fps_, 1u);
+    auto* encoder = static_cast<pyrowave_encoder>(pyrowave_.encoder);
+    pyrowave_result result = pyrowave_encoder_encode_gpu_synchronous(encoder, &input, &rate);
+
+    constexpr size_t PacketBoundary = 64 * 1024;
+    size_t packetCount = 0;
+    if (result == PYROWAVE_SUCCESS)
+    {
+        result = pyrowave_encoder_compute_num_packets(encoder, PacketBoundary, &packetCount);
+    }
+    size_t written = 0;
+    if (result == PYROWAVE_SUCCESS)
+    {
+        pyrowave_.packets.resize(packetCount * sizeof(pyrowave_packet));
+        pyrowave_.bitstream.resize(rate.maximum_bitstream_size + PacketBoundary);
+        result = pyrowave_encoder_packetize(encoder, reinterpret_cast<pyrowave_packet*>(pyrowave_.packets.data()),
+                                            PacketBoundary, &written, pyrowave_.bitstream.data(),
+                                            pyrowave_.bitstream.size());
+    }
+    CVPixelBufferRelease(nv12);
+    context->metrics.encodeSubmitMs = ToMilliseconds(Clock::now() - encodeStart);
+    context->encodeSubmitFinished = Clock::now();
+    if (result != PYROWAVE_SUCCESS || written == 0)
+    {
+        spdlog::warn("VideoEncoder: PyroWave encode failed: {}", pyrowave_result_to_string(result));
+        FinalizeEncodeFrame(context, true);
+        return;
+    }
+
+    const auto* packets = reinterpret_cast<const pyrowave_packet*>(pyrowave_.packets.data());
+    const size_t bytes = packets[written - 1].offset + packets[written - 1].size;
+    const uint64_t frame = context->metrics.frameNumber;
+    if (frame < 5 || frame % 600 == 0)
+    {
+        spdlog::info("VideoEncoder: PyroWave frame {} {} bytes (budget {}), encode {:.2f} ms, colour+copy {:.2f} ms",
+                      frame, bytes, rate.maximum_bitstream_size, context->metrics.encodeSubmitMs,
+                      context->metrics.gpuCopyMs);
+    }
+    context->metrics.keyframe = true;
+    try
+    {
+        context->nalCallback(pyrowave_.bitstream.data(), bytes, true, context->metrics.timestampNs);
+    }
+    catch (...)
+    {
+        spdlog::warn("VideoEncoder: PyroWave packet callback threw");
+        FinalizeEncodeFrame(context, true);
+        return;
+    }
+    FinalizeEncodeFrame(context, false);
+}
+
 void VideoEncoder::Shutdown()
 {
     shuttingDown_.store(true);
@@ -685,6 +836,31 @@ void VideoEncoder::Shutdown()
     }
 
     DestroySlots();
+
+    {
+        std::lock_guard<std::mutex> lock(pyrowaveMutex_);
+        if (pyrowave_.encoder != nullptr)
+        {
+            pyrowave_encoder_destroy(static_cast<pyrowave_encoder>(pyrowave_.encoder));
+            pyrowave_.encoder = nullptr;
+        }
+        if (pyrowave_.device != nullptr)
+        {
+            pyrowave_device_destroy(static_cast<pyrowave_device>(pyrowave_.device));
+            pyrowave_.device = nullptr;
+        }
+        if (pyrowave_.transfer != nullptr)
+        {
+            VTPixelTransferSessionInvalidate((VTPixelTransferSessionRef)pyrowave_.transfer);
+            CFRelease(pyrowave_.transfer);
+            pyrowave_.transfer = nullptr;
+        }
+        if (pyrowave_.nv12Pool != nullptr)
+        {
+            CFRelease(pyrowave_.nv12Pool);
+            pyrowave_.nv12Pool = nullptr;
+        }
+    }
 
     if (videoToolbox_.scaler != nullptr)
     {
@@ -741,7 +917,7 @@ bool VideoEncoder::EncodeInternal(FrameSource frameSource, bool stereo,
                                    int64_t timestampNs, OnNalUnitCallback callback,
                                    OnFrameEncodedCallback frameCallback)
 {
-    if (videoToolbox_.session == nullptr ||
+    if ((videoToolbox_.session == nullptr && pyrowave_.encoder == nullptr) ||
         !frameSource.left.IsValid() ||
         (stereo && !frameSource.right.IsValid()))
     {
@@ -1024,6 +1200,12 @@ bool VideoEncoder::EncodeInternal(FrameSource frameSource, bool stereo,
         }
 
         context->metrics.gpuCopyMs = ToMilliseconds(Clock::now() - context->encodeStart);
+
+        if (this->pyrowave_.encoder != nullptr)
+        {
+            this->EncodePyroWave(pixelBuffer, context);
+            return;
+        }
 
         CFMutableDictionaryRef frameProps = nullptr;
         if (forceKeyframe)

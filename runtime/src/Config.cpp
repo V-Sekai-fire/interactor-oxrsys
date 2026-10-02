@@ -370,6 +370,14 @@ ConfigValues ParseConfigToml(std::istream& input, const ConfigValues& defaults)
                     values.keyframeIntervalSec = val;
                 }
             }
+            else if (key == "codec")
+            {
+                value = ParseString(value);
+                if (value == "h265" || value == "pyrowave")
+                {
+                    values.videoCodec = value;
+                }
+            }
             else if (key == "encoder_preset")
             {
                 value = ParseString(value);

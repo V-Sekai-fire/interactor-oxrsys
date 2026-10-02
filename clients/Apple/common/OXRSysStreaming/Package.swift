@@ -15,7 +15,20 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "CPyroWave",
+            path: "Sources/CPyroWave",
+            exclude: ["LICENSE", "README.md"],
+            cxxSettings: [
+                .unsafeFlags(["-fobjc-arc"]),
+            ],
+            linkerSettings: [
+                .linkedFramework("Metal"),
+                .linkedFramework("IOSurface"),
+            ]
+        ),
+        .target(
             name: "OXRSysStreaming",
+            dependencies: ["CPyroWave"],
             path: "Sources/OXRSysStreaming",
             resources: [
                 .process("Shaders.metal"),

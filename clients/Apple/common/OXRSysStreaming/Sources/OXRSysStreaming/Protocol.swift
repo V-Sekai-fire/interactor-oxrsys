@@ -253,6 +253,8 @@ public enum VideoCodec: UInt32, Sendable {
     case h265 = 0
     case h264 = 1
     case av1 = 2
+    case cineForm = 3
+    case pyroWave = 4
 }
 
 public struct VideoPacketHeader: Sendable {

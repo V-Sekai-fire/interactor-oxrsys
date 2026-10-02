@@ -24,6 +24,7 @@ public final class VideoReceiver: @unchecked Sendable {
         var totalFramesSeen: UInt32 = 0
         var lastFrameDeliveryTimeNs: Int64 = 0
         var lastPacketReceivedTimeNs: Int64 = 0
+        var lastFrameCodec: UInt8 = 0
     }
 
     private let state = OSAllocatedUnfairLock(initialState: State())
@@ -34,6 +35,8 @@ public final class VideoReceiver: @unchecked Sendable {
     public var totalFramesSeen: UInt32 { state.withLock { $0.totalFramesSeen } }
     public var lastFrameDeliveryTimeNs: Int64 { state.withLock { $0.lastFrameDeliveryTimeNs } }
     public var lastPacketReceivedTimeNs: Int64 { state.withLock { $0.lastPacketReceivedTimeNs } }
+    /// The codec of the most recently delivered frame, as stamped in its packet headers.
+    public var lastFrameCodec: VideoCodec? { VideoCodec(rawValue: UInt32(state.withLock { $0.lastFrameCodec })) }
 
     public init() {}
 
@@ -174,6 +177,7 @@ public final class VideoReceiver: @unchecked Sendable {
         var totalExpected: UInt16 = 0
         var receivedCount: UInt16 = 0
         var frameTimestamp: Int64 = 0
+        var frameCodec: UInt8 = 0
         var lastGroupPacketTimeNs: Int64 = 0
 
         // Closure: attempt FEC recovery for all groups, returns true if frame is now complete
@@ -227,9 +231,11 @@ public final class VideoReceiver: @unchecked Sendable {
         func deliverFrame() {
             let finalSize = computeFinalSize(packetSizes, Int(totalExpected))
             let deliveryTimeNs = Self.monotonicNs()
+            let deliveredCodec = frameCodec
             let deliveredCount = state.withLock { state in
                 state.nalUnitsDelivered &+= 1
                 state.lastFrameDeliveryTimeNs = deliveryTimeNs
+                state.lastFrameCodec = deliveredCodec
                 return state.nalUnitsDelivered
             }
             if deliveredCount <= 10 || deliveredCount % 200 == 0 {
@@ -342,6 +348,7 @@ public final class VideoReceiver: @unchecked Sendable {
                 totalExpected = header.totalPackets
                 receivedCount = 0
                 frameTimestamp = header.presentationTimeNs
+                frameCodec = header.codec
                 lastGroupPacketTimeNs = 0
 
                 // Zero the tracking arrays

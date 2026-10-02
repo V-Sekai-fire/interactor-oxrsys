@@ -66,7 +66,7 @@ As of March 17, 2026, the pinned non-interactive OpenXR-CTS baseline is fully gr
 - **Always build and verify before declaring success** — run the macOS build + tests and/or Android build as appropriate before saying everything works
 - **Always update `README.md`, `AGENTS.md`, and the relevant files in `docs/` when making significant project changes**
 - Keep SwiftUI Home and Qt Home companion behavior in sync when changing shared Home workflows; only diverge for frontend-specific changes or when the user explicitly asks for a feature to be limited to one frontend.
-- Core C++ dependencies, including the CineForm SDK the Linux runtime encodes with, are fetched via CMake FetchContent; Qt, Vulkan SDKs, and platform SDKs are system/toolchain dependencies. FFmpeg is only an optional dependency of the Qt simulator's preview; the runtime does not link it.
+- Core C++ dependencies, including the CineForm SDK the Linux runtime encodes with and PyroWave's Metal port the macOS runtime can encode with, are fetched via CMake FetchContent (the Apple simulator's `CPyroWave` target is a copy of the PyroWave decoder at the same commit, since Swift packages cannot fetch it); Qt, Vulkan SDKs, and platform SDKs are system/toolchain dependencies. FFmpeg is only an optional dependency of the Qt simulator's preview; the runtime does not link it.
 - Product versions are centralized in `config/OXRSysVersion.xcconfig`; do not hardcode
   marketing versions or build numbers in CMake, Xcode, Gradle, or native client code.
 - Commit messages must read naturally and must not mention Codex or include `[codex]`.

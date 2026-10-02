@@ -123,6 +123,7 @@ Current codec identifiers:
 - `H264`
 - `AV1`
 - `CineForm` (the Linux runtime; every sample is intra-only)
+- `PyroWave` (the macOS runtime with `streaming.codec = "pyrowave"`; every frame is intra-only and one encoded frame is one NAL unit, the frame's whole bitstream, held to `bitrate_mbps / refresh_rate_hz` bytes)
 
 USB TCP video sends complete encoded NAL units as `VideoNal` records. It does not use UDP fragmentation, FEC, or NACK recovery.
 

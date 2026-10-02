@@ -62,6 +62,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     )
 endif()
 
+if(APPLE)
+    list(APPEND OXRSYS_RUNTIME_LINK_LIBRARIES
+        oxrsys_pyrowave
+    )
+endif()
+
 target_include_directories(oxrsys_runtime PRIVATE
     src
     ${CMAKE_SOURCE_DIR}/common/protocol/include
