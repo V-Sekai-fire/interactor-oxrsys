@@ -76,6 +76,7 @@ final class SimulatorModel {
     private let trackingSender = TrackingSender()
     private let controlChannel = ControlChannel()
     private let decoder = H265Decoder()
+    private let pyroWaveDecoder = PyroWaveDecoder()
     private let latencyReporter = LatencyReporter()
     let inputManager = SimulatorInputManager()
 
@@ -178,7 +179,7 @@ final class SimulatorModel {
         state = .connecting
         statusText = "Connecting to \(server.name)..."
 
-        decoder.configure { [weak self] pixelBuffer, presentationTime in
+        let onFrame: H265Decoder.OnFrame = { [weak self] pixelBuffer, presentationTime in
             guard let self else { return }
             self.consecutiveDecodeErrors = 0
             self.renderer?.submitFrame(pixelBuffer)
@@ -194,7 +195,10 @@ final class SimulatorModel {
             }
         }
 
-        decoder.onDecodeError = { [weak self] in
+        decoder.configure(callback: onFrame)
+        pyroWaveDecoder.configure(callback: onFrame)
+
+        let onDecodeError: @Sendable () -> Void = { [weak self] in
             guard let self else { return }
             self.consecutiveDecodeErrors += 1
             if self.consecutiveDecodeErrors >= self.keyframeErrorThreshold {
@@ -211,13 +215,20 @@ final class SimulatorModel {
             }
         }
 
+        decoder.onDecodeError = onDecodeError
+        pyroWaveDecoder.onDecodeError = onDecodeError
+
         videoReceiver.start { [weak self] nalData, presentationTimeNs, receiveTimeNs in
             guard let self else { return }
             self.latencyReporter.noteFrameReceived(
                 presentationTimeNs: presentationTimeNs,
                 receiveTimeNs: receiveTimeNs
             )
-            self.decoder.decode(nalData: nalData, presentationTimeNs: presentationTimeNs)
+            if self.videoReceiver.lastFrameCodec == .pyroWave {
+                self.pyroWaveDecoder.decode(frameData: nalData, presentationTimeNs: presentationTimeNs)
+            } else {
+                self.decoder.decode(nalData: nalData, presentationTimeNs: presentationTimeNs)
+            }
         }
 
         Thread.sleep(forTimeInterval: 0.05)
@@ -244,6 +255,7 @@ final class SimulatorModel {
         trackingSender.disconnect()
         controlChannel.disconnect()
         decoder.invalidate()
+        pyroWaveDecoder.invalidate()
         discovery.stop()
         latencyReporter.reset()
 
@@ -454,7 +466,7 @@ final class SimulatorModel {
         stats.framesDelivered = delivered
         stats.framesDropped = videoReceiver.framesDropped
         stats.totalFramesSeen = videoReceiver.totalFramesSeen
-        stats.decodeErrors = decoder.totalDecodeErrors
+        stats.decodeErrors = decoder.totalDecodeErrors + pyroWaveDecoder.totalDecodeErrors
         stats.deliveryFps = Double(deltaDelivered) / dtSec
 
         if stats.totalFramesSeen > 0 {

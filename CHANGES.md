@@ -27,6 +27,8 @@ This file tracks user-facing, integration-facing, and runtime-relevant changes f
 - Added a native USB ADB backend to SwiftUI Home so Quest USB reverse setup can run without Android Studio, the Android SDK, Homebrew, or an `adb` executable.
 - Added world-space (rotational) reprojection to the visionOS viewer: each streamed frame is reprojected from the head pose the runtime rendered it for into the live head pose every vsync, so the view stays locked to the world as the head turns instead of lagging the stream. It reuses the per-frame `VIDEO_FLAG_RENDER_POSE` the runtime already sends and is client-only (no runtime, protocol, or other-client changes).
 
+- Added PyroWave as an optional macOS streaming codec (`streaming.codec = "pyrowave"`): an intra-only wavelet encoder in Metal compute with exact per-frame rate control, `VideoCodec::PyroWave` on the wire, a matching decoder in the Apple simulator, and a round-trip test with corrupted- and truncated-frame controls.
+
 ### Changed
 
 - Changed the Linux runtime's streaming encoder from FFmpeg to the CineForm SDK (Apache-2.0 OR MIT, fetched with FetchContent). The runtime no longer links FFmpeg; samples are intra-only and tagged `VideoCodec::CineForm`. No headset client decodes CineForm yet.

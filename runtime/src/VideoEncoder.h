@@ -16,7 +16,8 @@
 /**
  * Video encoder facade.
  *
- * Apple builds encode H.265 with VideoToolbox and Metal textures. Linux builds
+ * Apple builds encode H.265 with VideoToolbox and Metal textures, or PyroWave when
+ * streaming.codec = "pyrowave". Linux builds
  * encode CineForm with the CineForm SDK and keep backend-specific graphics
  * readback state behind GraphicsContext.
  */
@@ -90,7 +91,8 @@ public:
 
     bool IsInitialized() const
     {
-        return videoToolbox_.session != nullptr || cineform_.codec != nullptr || nvenc_ != nullptr;
+        return videoToolbox_.session != nullptr || pyrowave_.encoder != nullptr ||
+               cineform_.codec != nullptr || nvenc_ != nullptr;
     }
 
     // Stats
@@ -128,6 +130,19 @@ private:
         void* foveationSampler = nullptr;  // id<MTLSamplerState>
     };
 
+    struct PyroWaveState
+    {
+        void* device = nullptr;           // pyrowave_device
+        void* encoder = nullptr;          // pyrowave_encoder
+        void* transfer = nullptr;         // VTPixelTransferSessionRef (BGRA -> NV12)
+        void* nv12Pool = nullptr;         // CVPixelBufferPoolRef
+        std::vector<uint8_t> bitstream;
+        std::vector<uint8_t> packets;     // pyrowave_packet array storage
+    };
+
+    bool InitializePyroWave(const GraphicsContext& graphicsContext);
+    void EncodePyroWave(void* pixelBuffer, void* context);
+
     struct CineFormState
     {
         void* codec = nullptr;        // CineFormFrameCodec*
@@ -136,6 +151,7 @@ private:
 
     GraphicsContext graphicsContext_ = {};
     VideoToolboxState videoToolbox_ = {};
+    PyroWaveState pyrowave_ = {};
     CineFormState cineform_ = {};
     void* nvenc_ = nullptr;           // NvencState* (NvencVideoEncoder.cpp)
 
@@ -153,6 +169,7 @@ private:
     std::atomic<uint32_t> inFlightFrameCount_{0};
     std::atomic<uint64_t> frameNumberCounter_{0};
     std::mutex slotMutex_;
+    std::mutex pyrowaveMutex_;
     static constexpr size_t SlotCount = 3;
     std::array<BufferSlot, SlotCount> slots_{};
 };

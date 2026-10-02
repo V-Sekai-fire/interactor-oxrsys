@@ -86,6 +86,37 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(OpenXR)
 
+# PyroWave (MIT): the macOS runtime's optional intra-only streaming codec, from its
+# Metal port. A sibling pyrowave-upstream checkout (the goal manifest's layout) is used
+# in place of the fetch when present; FETCHCONTENT_SOURCE_DIR_PYROWAVE overrides both.
+if(APPLE)
+    if(NOT DEFINED FETCHCONTENT_SOURCE_DIR_PYROWAVE AND EXISTS "${CMAKE_SOURCE_DIR}/../pyrowave-upstream/metal/pyrowave_metal.h")
+        set(FETCHCONTENT_SOURCE_DIR_PYROWAVE "${CMAKE_SOURCE_DIR}/../pyrowave-upstream" CACHE PATH "PyroWave checkout")
+    endif()
+    FetchContent_Declare(
+        pyrowave
+        GIT_REPOSITORY https://github.com/V-Sekai-fire/pyrowave.git
+        GIT_TAG 89f7e47d4abbf650c91fae766728af866c5e32a0
+        SOURCE_SUBDIR none # the root build needs Granite; only metal/ is compiled, below
+    )
+    FetchContent_MakeAvailable(pyrowave)
+    set(PYROWAVE_METAL_DIR ${pyrowave_SOURCE_DIR}/metal)
+    add_library(oxrsys_pyrowave STATIC
+        ${PYROWAVE_METAL_DIR}/pyrowave_common.mm
+        ${PYROWAVE_METAL_DIR}/pyrowave_decoder.mm
+        ${PYROWAVE_METAL_DIR}/pyrowave_encoder.mm
+        ${PYROWAVE_METAL_DIR}/pyrowave_bitstream.cpp
+    )
+    target_include_directories(oxrsys_pyrowave PUBLIC ${PYROWAVE_METAL_DIR})
+    target_compile_options(oxrsys_pyrowave PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+    set_target_properties(oxrsys_pyrowave PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        CXX_VISIBILITY_PRESET hidden
+        OBJCXX_VISIBILITY_PRESET hidden
+    )
+    target_link_libraries(oxrsys_pyrowave PUBLIC "-framework Metal" "-framework IOSurface" "-framework Foundation")
+endif()
+
 # CineForm SDK (Apache-2.0 OR MIT): the Linux runtime's streaming video codec.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     FetchContent_Declare(
@@ -305,6 +336,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 if(APPLE)
+    add_executable(oxrsys_pyrowave_tests
+        tests/TestPyroWaveRoundTrip.mm
+    )
+    target_compile_options(oxrsys_pyrowave_tests PRIVATE -fobjc-arc)
+    target_link_libraries(oxrsys_pyrowave_tests PRIVATE
+        Catch2::Catch2WithMain
+        oxrsys_pyrowave
+    )
+    add_test(NAME oxrsys_pyrowave_tests COMMAND oxrsys_pyrowave_tests)
+    list(APPEND OXRSYS_RUNTIME_TEST_TARGETS oxrsys_pyrowave_tests)
+
     add_executable(oxrsys_runtime_api_tests
         tests/TestRuntimeApi.cpp
         tests/TestMetalSupport.mm

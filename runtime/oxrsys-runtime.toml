@@ -38,6 +38,10 @@ keyframe_interval_sec = 2
 # quality  = best visual quality, slightly higher latency
 encoder_preset = "balanced"
 
+# Video codec on macOS: "h265" (VideoToolbox) or "pyrowave" (intra-only wavelet
+# codec in Metal compute, every frame held to bitrate_mbps / refresh_rate_hz bytes).
+codec = "h265"
+
 # Streaming transport: "auto" tries USB ADB reverse and WiFi, "wifi" disables USB TCP
 # listeners, and "usb_adb" disables WiFi discovery fallback.
 transport = "auto"
