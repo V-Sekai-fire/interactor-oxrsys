@@ -548,25 +548,17 @@ private final class SimulatorMTKView: MTKView {
 
     override func mouseMoved(with event: NSEvent) {
         mouseMotionHandler?(Float(event.deltaX), Float(event.deltaY))
-        holdCapturedCursor()
     }
 
     override func mouseDragged(with event: NSEvent) {
         mouseMotionHandler?(Float(event.deltaX), Float(event.deltaY))
-        holdCapturedCursor()
     }
 
-    // macOS re-associates the cursor on activation changes, so a captured cursor drifts to the
-    // screen edge and the deltas stop; pin it at the view's centre again whenever it has moved.
-    private func holdCapturedCursor() {
-        guard mouseCapturedProvider?() == true, let window,
-              let mainScreen = NSScreen.screens.first else { return }
-        let rect = window.convertToScreen(convert(bounds, to: nil))
-        let centre = CGPoint(x: rect.midX, y: mainScreen.frame.maxY - rect.midY)
-        let cursor = NSEvent.mouseLocation
-        if abs(cursor.x - rect.midX) > 1 || abs(cursor.y - rect.midY) > 1 {
-            CGWarpMouseCursorPosition(centre)
-        }
+    // Standard FPS mouse look: when captured, keep the cursor disassociated from mouse movement so
+    // raw deltas keep flowing with no edge; macOS re-associates the cursor on activation changes, so
+    // the capture is re-asserted whenever the window becomes key or the app becomes active.
+    private func reassertMouseCapture() {
+        guard mouseCapturedProvider?() == true else { return }
         CGAssociateMouseAndMouseCursorPosition(0)
     }
 
@@ -597,7 +589,7 @@ private final class SimulatorMTKView: MTKView {
         activationObservers.forEach { NotificationCenter.default.removeObserver($0) }
         activationObservers = [NSWindow.didBecomeKeyNotification, NSApplication.didBecomeActiveNotification].map {
             NotificationCenter.default.addObserver(forName: $0, object: nil, queue: .main) { [weak self] _ in
-                self?.holdCapturedCursor()
+                self?.reassertMouseCapture()
             }
         }
     }
