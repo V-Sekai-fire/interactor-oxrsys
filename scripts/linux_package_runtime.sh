@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MPL-2.0
 #
-# Packages the Linux runtime as .deb and .rpm with fpm: the library and its OpenXR manifest under
-# /opt/oxrsys. Installing does not make it the active runtime; OXRSys Home or XR_RUNTIME_JSON does.
+# Packages the Linux runtime as .deb and .rpm with nFPM (packaging/nfpm.yaml): the library and its
+# OpenXR manifest under /opt/oxrsys. Installing does not make it the active runtime; OXRSys Home or
+# XR_RUNTIME_JSON does.
 #   scripts/linux_package_runtime.sh <liboxrsys-runtime.so> <out-dir>
 #   scripts/linux_package_runtime.sh --check <package>   # fails unless the package holds both files
 set -euo pipefail
@@ -52,11 +53,8 @@ cat >"$staging$manifest_path" <<EOF
 EOF
 
 mkdir -p "$out"
+export OXRSYS_STAGE="$staging" OXRSYS_PKG_VERSION="$version"
 for type in deb rpm; do
-    fpm -s dir -t "$type" -C "$staging" -p "$out" --force \
-        -n oxrsys-runtime -v "$version" --license MPL-2.0 \
-        --url https://github.com/V-Sekai-fire/oxrsys \
-        --description "OXRSys OpenXR runtime: streams OpenXR apps to headsets over PyroWave" \
-        opt
+    nfpm package -f "$root/packaging/nfpm.yaml" -p "$type" -t "$out"
 done
 ls -1 "$out"

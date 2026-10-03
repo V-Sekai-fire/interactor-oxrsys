@@ -65,7 +65,7 @@ Key outputs in the selected build directory. With the default build these are un
 - `compile_commands.json` symlinked at the project root for editor integration
 
 All third-party C++ dependencies are fetched through CMake `FetchContent`.
-Linux additionally requires system/toolchain packages for Vulkan headers, libuuid, and pkg-config. The Linux runtime encodes its stream with PyroWave, which FetchContent builds with its Granite subset as a static library; `scripts/linux_check_runtime_linkage.sh <liboxrsys-runtime.so> --self-test` checks that the runtime links no FFmpeg library. `scripts/linux_package_runtime.sh <liboxrsys-runtime.so> <out-dir>` packages it as `.deb` and `.rpm` with fpm under `/opt/oxrsys`, without making it the active runtime; CI uploads both.
+Linux additionally requires system/toolchain packages for Vulkan headers, libuuid, and pkg-config. The Linux runtime encodes its stream with PyroWave, which FetchContent builds with its Granite subset as a static library; `scripts/linux_check_runtime_linkage.sh <liboxrsys-runtime.so> --self-test` checks that the runtime links no FFmpeg library. `scripts/linux_package_runtime.sh <liboxrsys-runtime.so> <out-dir>` packages it as `.deb` and `.rpm` with nFPM (`packaging/nfpm.yaml`) under `/opt/oxrsys`, without making it the active runtime; CI uploads both.
 
 Windows builds with MSVC through `scripts/windows_build.ps1`. Vulkan and Direct3D 11 apps render into shared D3D11 textures and the runtime streams them with PyroWave, linked statically.
 

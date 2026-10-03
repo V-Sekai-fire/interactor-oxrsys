@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# CI control for scripts/linux_package_runtime.sh --check: a package holding the runtime library
+# but not its OpenXR manifest, which the check must reject.
+name: oxrsys-control
+arch: amd64
+platform: linux
+version: 0.0.0
+contents:
+  - src: control/opt
+    dst: /opt

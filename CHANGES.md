@@ -29,7 +29,7 @@ This file tracks user-facing, integration-facing, and runtime-relevant changes f
 
 - Added PyroWave as an optional macOS streaming codec (`streaming.codec = "pyrowave"`): an intra-only wavelet encoder in Metal compute with exact per-frame rate control, `VideoCodec::PyroWave` on the wire, a matching decoder in the Apple simulator, and a round-trip test with corrupted- and truncated-frame controls.
 
-- Added `.deb` and `.rpm` packages of the Linux runtime, built with fpm in CI and installed under `/opt/oxrsys` without changing the active OpenXR runtime.
+- Added `.deb` and `.rpm` packages of the Linux runtime, built with nFPM in CI and installed under `/opt/oxrsys` without changing the active OpenXR runtime.
 
 ### Changed
 
