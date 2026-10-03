@@ -3,11 +3,13 @@
 # Build the Windows runtime and the Qt simulator with MSVC, taking CMake, Ninja and
 # Qt 6 from the pixi environment in pixi.toml. Video is PyroWave in the runtime and the
 # simulator, linked statically into both; no FFmpeg.
-# Nothing is registered: point XR_RUNTIME_JSON at
-# build/windows/runtime/oxrsys-runtime.json per process.
+# -Register makes the installed runtime the machine's active OpenXR runtime; without it, point
+# XR_RUNTIME_JSON at build/windows/runtime/oxrsys-runtime.json per process.
 param(
     [string]$BuildType = "RelWithDebInfo",
-    [switch]$Test
+    [switch]$Test,
+    [switch]$Install,
+    [switch]$Register
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,6 +73,33 @@ try {
     if ($Test) {
         pixi run ctest --test-dir $build --output-on-failure
         if ($LASTEXITCODE -ne 0) { throw "tests failed" }
+    }
+
+    # -Install copies the runtime to a stable per-user folder with a manifest relative to it;
+    # -Register makes that the machine's active OpenXR runtime (UAC), keeping the old one as previous.
+    if ($Install -or $Register) {
+        $runtimeDir = Join-Path $env:LOCALAPPDATA 'OXRSys\runtime'
+        New-Item -ItemType Directory -Force $runtimeDir | Out-Null
+        Copy-Item -Force (Join-Path $build 'runtime\liboxrsys-runtime.dll') $runtimeDir
+        $manifest = '{"file_format_version": "1.0.0", "runtime": {"name": "OXRSys Runtime", "library_path": ".\\liboxrsys-runtime.dll"}}'
+        [System.IO.File]::WriteAllText((Join-Path $runtimeDir 'oxrsys-runtime.json'), $manifest)
+    }
+    if ($Register) {
+        $json = Join-Path $runtimeDir 'oxrsys-runtime.json'
+        $key = 'HKLM:\SOFTWARE\Khronos\OpenXR\1'
+        $previous = (Get-ItemProperty $key -ErrorAction SilentlyContinue).ActiveRuntime
+        $commands = @("New-Item -Force -Path '$key\AvailableRuntimes' | Out-Null",
+                      "Set-ItemProperty -Path '$key\AvailableRuntimes' -Name '$json' -Value 0 -Type DWord",
+                      "Set-ItemProperty -Path '$key' -Name ActiveRuntime -Value '$json'")
+        if ($previous -and $previous -ne $json) {
+            $commands += "Set-ItemProperty -Path '$key' -Name PreviousActiveRuntime -Value '$previous'"
+        }
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($commands -join '; '))
+        $elevated = Start-Process powershell -Verb RunAs -WindowStyle Hidden -Wait -PassThru `
+            -ArgumentList '-NoProfile', '-EncodedCommand', $encoded
+        if ($elevated.ExitCode -ne 0 -or (Get-ItemProperty $key).ActiveRuntime -ne $json) {
+            throw "runtime registration failed"
+        }
     }
 }
 finally {

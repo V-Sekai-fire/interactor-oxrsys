@@ -38,6 +38,11 @@ public:
     QString stateText() const;
     bool isConnected() const;
 
+    // Connect to the first runtime heard at start (default on).
+    void setAutoConnect(bool enabled);
+    // Save the 90th decoded frame as an image there.
+    void setSnapshotPath(const QString& path);
+
 public slots:
     void startDiscovery();
     void disconnectFromRuntime();

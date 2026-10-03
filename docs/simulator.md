@@ -38,7 +38,8 @@ The viewer connects to the runtime as a streaming client, using the same UDP pro
 - Displays a single-eye preview across the full screen
 
 The Qt simulator searches at start and connects to the first runtime it hears;
-`OXRSYS_SIMULATOR_AUTOCONNECT=0` leaves it disconnected until Search is clicked.
+`oxrsys-simulator --no-autoconnect` leaves it disconnected until Search is clicked, and
+`--snapshot <file.png>` saves the 90th decoded frame.
 
 The Qt simulator uses the same UDP discovery, video, control, and tracking ports. It decodes the
 PyroWave stream on the GPU and presents the left eye through a Vulkan swapchain on its preview
