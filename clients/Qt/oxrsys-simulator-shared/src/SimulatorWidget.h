@@ -130,7 +130,7 @@ private:
     VideoFrameAssembler videoAssembler_;
     PyroWaveDecoder pyrowave_;
     bool videoViewCreated_ = false;
-    bool autoConnect_ = false;
+    bool autoConnect_ = true;
     QString snapshotPath_;
     QElapsedTimer poseClock_;
     QSet<int> pressedKeys_;

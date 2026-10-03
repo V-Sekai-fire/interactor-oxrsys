@@ -37,6 +37,9 @@ The viewer connects to the runtime as a streaming client, using the same UDP pro
 - Captures keyboard and mouse input and sends simulated tracking data to the runtime
 - Displays a single-eye preview across the full screen
 
+The Qt simulator searches at start and connects to the first runtime it hears;
+`OXRSYS_SIMULATOR_AUTOCONNECT=0` leaves it disconnected until Search is clicked.
+
 The Qt simulator uses the same UDP discovery, video, control, and tracking ports. With FFmpeg
 development libraries available at build time, the Qt widget decodes the H.265 stream into its
 preview surface. That surface is also the interaction target for click, drag, scroll, keyboard focus,
@@ -99,15 +102,27 @@ server has been discovered, then sends both angles in each tracking packet.
 | Input | Action |
 | --- | --- |
 | Right mouse button in the preview | Capture or release mouse look |
-| Mouse move while captured, or left-drag | Head look |
+| Mouse move while captured, or left-drag | Head look, vertical inverted: mouse down looks up |
 | Mouse wheel | Move forward or backward |
 | `Z Q S D` or `W A S D` | Move head |
 | `Left Shift` + movement | Move left controller |
 | `Right Shift` + movement | Move right controller |
-| Arrow keys | Alternate head look |
 | `R / E` | Roll head |
-| `F / G` | Left or right grip |
 | `Escape` | Release mouse capture |
+
+The controllers present as `/interaction_profiles/oculus/touch_controller`, and every input
+on that profile has a key:
+
+| Input | Touch path |
+| --- | --- |
+| `T / H` | Left or right `trigger` |
+| `F / G` | Left or right `squeeze` |
+| `1 / 2` | Left `x/click` or `y/click` |
+| `3 / 4` | Right `a/click` or `b/click` |
+| `M` | Left `menu/click` |
+| `I J K L` | Left `thumbstick` |
+| Arrow keys | Right `thumbstick` |
+| `C / N` | Left or right `thumbstick/click` |
 
 The Qt simulator window exposes `Vertical FOV` next to the runtime/tracking
 panels. It uses the same `TrackingPacket.eyeFov` path as the Apple simulator.
