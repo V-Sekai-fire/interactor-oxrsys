@@ -133,7 +133,7 @@ struct Sparkline
     }
 
     // Each segment is coloured by its own sample, so a fault shows while it lasts and clears with it.
-    // The scale is the 90th percentile; a spike above it clips to the top instead of flattening the rest.
+    // The scale is 1.5x the 90th percentile; a spike above it clips to the top instead of flattening the rest.
     void draw(QPainter& painter, const QRectF& area, bool faultSeries) const
     {
         painter.setPen(QPen(QColor(65, 78, 94), 1.0));
@@ -144,7 +144,7 @@ struct Sparkline
         }
         std::vector<quint64> sorted(deltas.begin(), deltas.end());
         std::sort(sorted.begin(), sorted.end());
-        const quint64 scale = std::max<quint64>(1, sorted[(sorted.size() - 1) * 9 / 10]);
+        const quint64 scale = std::max<quint64>(1, sorted[(sorted.size() - 1) * 9 / 10] * 3 / 2);
         const qreal step = area.width() / 39.0;
         const qreal x0 = area.right() - step * static_cast<qreal>(deltas.size() - 1);
         const auto point = [&](size_t i) {
