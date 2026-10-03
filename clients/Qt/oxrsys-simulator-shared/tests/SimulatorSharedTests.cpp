@@ -239,12 +239,12 @@ void testTrackingFlagsAndMovementTargets()
            "Expected simulator tracking packet to include eye FOV");
 }
 
-void testMouseLookVerticalInverted()
+void testMouseLookVerticalNotInverted()
 {
     using namespace oxrsys::qt_simulator;
     SimulatorTrackingPose pose;
     advanceSimulatorTracking(pose, QPointF(0.0, 100.0), {}, 0.0f);
-    expect(pose.pitch > 0.0f, "Expected moving the mouse down to look up");
+    expect(pose.pitch < 0.0f, "Expected moving the mouse down to look down");
 }
 
 void testTouchControllerKeys()
@@ -286,7 +286,7 @@ int main()
         testFecRecoveryUsesFinalShortPacketSize();
         testTrailingFecAfterCompleteFrameIgnored();
         testTrackingFlagsAndMovementTargets();
-        testMouseLookVerticalInverted();
+        testMouseLookVerticalNotInverted();
         testTouchControllerKeys();
     }
     catch (const std::exception& error)
