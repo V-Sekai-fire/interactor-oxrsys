@@ -29,6 +29,8 @@ This file tracks user-facing, integration-facing, and runtime-relevant changes f
 
 - Added PyroWave as an optional macOS streaming codec (`streaming.codec = "pyrowave"`): an intra-only wavelet encoder in Metal compute with exact per-frame rate control, `VideoCodec::PyroWave` on the wire, a matching decoder in the Apple simulator, and a round-trip test with corrupted- and truncated-frame controls.
 
+- Added `.deb` and `.rpm` packages of the Linux runtime, built with fpm in CI and installed under `/opt/oxrsys` without changing the active OpenXR runtime.
+
 ### Changed
 
 - Changed the Windows and Linux streaming encoder to PyroWave's Vulkan C API (MIT, fetched with FetchContent with its Granite subset and linked statically). Nothing links FFmpeg; frames are intra-only and tagged `VideoCodec::PyroWave`. The Linux encoder sends a black frame until it reads the app's swapchain images.
