@@ -122,8 +122,8 @@ set_target_properties(oxrsys_runtime PROPERTIES
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # Keep the CineForm SDK's symbols out of the runtime's exports, so a host that
-    # loads its own copy of the SDK does not bind to ours.
+    # Keep the static libraries' symbols (PyroWave, Granite) out of the runtime's exports, so a
+    # host that loads its own copy does not bind to ours.
     target_link_options(oxrsys_runtime PRIVATE "LINKER:--exclude-libs,ALL")
 endif()
 

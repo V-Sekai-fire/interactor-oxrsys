@@ -319,6 +319,14 @@ set(OXRSYS_RUNTIME_TEST_TARGETS
     oxrsys_runtime_status_tests
 )
 
+if(NOT APPLE)
+    add_executable(oxrsys_pyrowave_tests tests/TestPyroWaveCApiRoundTrip.cpp)
+    target_link_libraries(oxrsys_pyrowave_tests PRIVATE Catch2::Catch2WithMain oxrsys_pyrowave)
+    add_test(NAME oxrsys_pyrowave_tests COMMAND oxrsys_pyrowave_tests)
+    set_tests_properties(oxrsys_pyrowave_tests PROPERTIES TIMEOUT 120)
+    list(APPEND OXRSYS_RUNTIME_TEST_TARGETS oxrsys_pyrowave_tests)
+endif()
+
 if(APPLE)
     add_executable(oxrsys_pyrowave_tests
         tests/TestPyroWaveRoundTrip.mm
