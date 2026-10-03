@@ -1,0 +1,73 @@
+# Virtual tables of the PC VR runtime's driver interface, in slot order, for the interfaces the
+# driver implements or calls. Read by vtbl.py; slot orders derived from the interface SDK 2.15.6.
+# "implement" lists every slot; "call" may write `pad` for slots the driver never calls and
+# omit trailing ones.
+
+interface IServerTrackedDeviceProvider "IServerTrackedDeviceProvider_004" implement
+0: EVRInitError Init(IVRDriverContext *pDriverContext);
+1: void Cleanup(void);
+2: const char *const *GetInterfaceVersions(void);
+3: void RunFrame(void);
+4: bool ShouldBlockStandbyMode(void);
+5: void EnterStandby(void);
+6: void LeaveStandby(void);
+
+interface ITrackedDeviceServerDriver "ITrackedDeviceServerDriver_005" implement
+0: EVRInitError Activate(uint32_t unObjectId);
+1: void Deactivate(void);
+2: void EnterStandby(void);
+3: void *GetComponent(const char *pchComponentNameAndVersion);
+4: void DebugRequest(const char *pchRequest, char *pchResponseBuffer, uint32_t unResponseBufferSize);
+5: DriverPose_t GetPose(void);
+
+interface IVRDisplayComponent "IVRDisplayComponent_003" implement
+0: void GetWindowBounds(int32_t *pnX, int32_t *pnY, uint32_t *pnWidth, uint32_t *pnHeight);
+1: bool IsDisplayOnDesktop(void);
+2: bool IsDisplayRealDisplay(void);
+3: void GetRecommendedRenderTargetSize(uint32_t *pnWidth, uint32_t *pnHeight);
+4: void GetEyeOutputViewport(EVREye eEye, uint32_t *pnX, uint32_t *pnY, uint32_t *pnWidth, uint32_t *pnHeight);
+5: void GetProjectionRaw(EVREye eEye, float *pfLeft, float *pfRight, float *pfTop, float *pfBottom);
+6: DistortionCoordinates_t ComputeDistortion(EVREye eEye, float fU, float fV);
+7: bool ComputeInverseDistortion(HmdVector2_t *pResult, EVREye eEye, uint32_t unChannel, float fU, float fV);
+
+interface IVRDriverDirectModeComponent "IVRDriverDirectModeComponent_009" implement
+0: void CreateSwapTextureSet(uint32_t unPid, const SwapTextureSetDesc_t *pSwapTextureSetDesc, SwapTextureSet_t *pOutSwapTextureSet);
+1: void DestroySwapTextureSet(SharedTextureHandle_t sharedTextureHandle);
+2: void DestroyAllSwapTextureSets(uint32_t unPid);
+3: void GetNextSwapTextureSetIndex(SharedTextureHandle_t *sharedTextureHandles, uint32_t (*pIndices)[2]);
+4: void SubmitLayer(const SubmitLayerPerEye_t (&perEye)[2]);
+5: void Present(SharedTextureHandle_t syncTexture);
+6: void PostPresent(const Throttling_t *pThrottling);
+7: void GetFrameTiming(DriverDirectMode_FrameTiming *pFrameTiming);
+
+interface IVRDriverContext "" call
+0: void *GetGenericInterface(const char *pchInterfaceVersion, EVRInitError *peError);
+1: DriverHandle_t GetDriverHandle(void);
+
+interface IVRServerDriverHost "IVRServerDriverHost_006" call
+0: bool TrackedDeviceAdded(const char *pchDeviceSerialNumber, ETrackedDeviceClass eDeviceClass, ITrackedDeviceServerDriver *pDriver);
+1: void TrackedDevicePoseUpdated(uint32_t unWhichDevice, const DriverPose_t &newPose, uint32_t unPoseStructSize);
+2: void VsyncEvent(double vsyncTimeOffsetSeconds);
+3: pad VendorSpecificEvent
+4: bool IsExiting(void);
+5: bool PollNextEvent(VREvent_t *pEvent, uint32_t uncbVREvent);
+
+interface IVRProperties "IVRProperties_001" call
+0: pad ReadPropertyBatch
+1: ETrackedPropertyError WritePropertyBatch(PropertyContainerHandle_t ulContainerHandle, PropertyWrite_t *pBatch, uint32_t unBatchEntryCount);
+2: pad GetPropErrorNameFromEnum
+3: PropertyContainerHandle_t TrackedDeviceToPropertyContainer(TrackedDeviceIndex_t nDevice);
+
+interface IVRDriverLog "IVRDriverLog_001" call
+0: void Log(const char *pchLogMessage);
+
+interface IVRSettings "IVRSettings_003" call
+0: pad GetSettingsErrorNameFromEnum
+1: pad SetBool
+2: pad SetInt32
+3: pad SetFloat
+4: pad SetString
+5: pad GetBool
+6: int32_t GetInt32(const char *pchSection, const char *pchSettingsKey, EVRSettingsError *peError);
+7: pad GetFloat
+8: void GetString(const char *pchSection, const char *pchSettingsKey, char *pchValue, uint32_t unValueLen, EVRSettingsError *peError);

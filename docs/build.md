@@ -69,6 +69,15 @@ Linux additionally requires system/toolchain packages for Vulkan headers, libuui
 
 Windows builds with MSVC through `scripts/windows_build.ps1`. Vulkan and Direct3D 11 apps render into shared D3D11 textures and the runtime streams them with PyroWave, linked statically.
 
+The same build produces a head-mounted display driver for the PC VR runtime's driver interface at
+`build/windows/driver/oxrsys` (`driver.vrdrivermanifest`, `bin/win64/driver_oxrsys.dll`). Register it
+with that runtime's `vrpathreg.exe adddriver <path>` and remove it with `removedriver <path>`. The
+driver hosts the same streaming server, so the Qt simulator connects to it as it does to the OpenXR
+runtime. Its interface declarations are generated from `driver/abi/openvr_driver.vtbl` by
+`driver/abi/vtbl.py`; no SDK header is included. Set `OXRSYS_OPENVR_REFERENCE_HEADER` to the SDK's
+`openvr_driver.h` to add the slot reference diff to CTest. The `driver_oxrsys` settings section takes
+`frameDumpPath` and `frameDumpFrame` to write one presented frame as a BMP.
+
 ## Versioning
 
 Product versioning is centralized in `config/OXRSysVersion.xcconfig`.
