@@ -20,6 +20,7 @@
 
 #include "PyroWaveDecoder.h"
 
+class QCheckBox;
 class QLabel;
 class QPushButton;
 class QSlider;
@@ -161,5 +162,6 @@ private:
     int simulatorFovDegrees_ = 100;
     bool controllersPresent_ = true;
     int middleKey_ = 0;
+    QCheckBox* pointingToggle_ = nullptr;
     oxrsys::qt_simulator::SimulatorTrackingPose trackingPose_;
 };

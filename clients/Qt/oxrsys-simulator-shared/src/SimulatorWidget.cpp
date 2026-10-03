@@ -22,6 +22,7 @@
 #include <QPainterPath>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QTimer>
 #include <QUdpSocket>
@@ -888,6 +889,15 @@ void SimulatorWidget::buildUi()
     controllers->setChecked(controllersPresent_);
     connect(controllers, &QCheckBox::toggled, this, [this](bool on) { controllersPresent_ = on; });
     simulatorLayout->addWidget(controllers);
+    pointingToggle_ = new QCheckBox("Pointing (P)", simulatorPanel);
+    connect(pointingToggle_, &QCheckBox::toggled, this, [this](bool on) {
+        if (trackingPose_.pointing != on)
+        {
+            trackingPose_.pointing = on;
+            trackingPose_.pointingAge = 0.0f;
+        }
+    });
+    simulatorLayout->addWidget(pointingToggle_);
     sideLayout->addWidget(simulatorPanel);
     sideLayout->addStretch(1);
     rootLayout->addWidget(side);
@@ -1030,6 +1040,12 @@ void SimulatorWidget::keyPressEvent(QKeyEvent* event)
         event->accept();
         return;
     }
+    if (event->key() == Qt::Key_P && !event->isAutoRepeat())
+    {
+        pointingToggle_->toggle();
+        event->accept();
+        return;
+    }
     if (!event->isAutoRepeat())
     {
         setKeyPressed(oxrsys::qt_simulator::simulatorKeyIdentifier(*event), true);
@@ -1107,6 +1123,11 @@ void SimulatorWidget::refreshStats()
 {
     previewStatusDirty_ = false;
     pushPreviewStatus();
+    if (pointingToggle_->isChecked() != trackingPose_.pointing)
+    {
+        const QSignalBlocker block(pointingToggle_);
+        pointingToggle_->setChecked(trackingPose_.pointing);
+    }
     telemetrySparks_->sample({trackingPacketsSent_, videoPacketsReceived_, videoFramesDecoded_, videoFramesDropped_,
                               videoFecRecoveries_, decodeErrors_});
     if (telemetryDirty_)

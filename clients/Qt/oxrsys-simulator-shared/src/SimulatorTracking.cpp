@@ -84,16 +84,11 @@ void advanceSimulatorTracking(SimulatorTrackingPose& pose,
     constexpr float MouseSensitivity = 0.003f;
     constexpr float MoveSpeed = 2.0f;
 
-    // Pressing the trigger or the system button raises the right hand to point; it lowers 1.5 s later.
-    if (containsAny(pressedKeys, {TriggerMouseKey, Qt::Key_H, Qt::Key_M}))
+    if (containsAny(pressedKeys, {TriggerMouseKey, Qt::Key_H, Qt::Key_M}) && !pose.pointing)
     {
-        if (pose.pointingSeconds <= 0.0f)
-        {
-            pose.pointingAge = 0.0f;
-        }
-        pose.pointingSeconds = 1.5f;
+        pose.pointing = true;
+        pose.pointingAge = 0.0f;
     }
-    pose.pointingSeconds = std::max(0.0f, pose.pointingSeconds - deltaTime);
     pose.pointingAge += deltaTime;
 
     pose.yaw -= static_cast<float>(mouseDelta.x()) * MouseSensitivity;
@@ -194,7 +189,7 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
     const Vector left = rotate(bodyYaw, {pose.leftHandOffset[0], pose.leftHandOffset[1], pose.leftHandOffset[2]});
     store({head.x + left.x, head.y + left.y, head.z + left.z}, bodyYaw, packet.leftControllerPos,
           packet.leftControllerRot);
-    if (pose.pointingSeconds <= 0.0f)
+    if (!pose.pointing)
     {
         const Vector right = rotate(bodyYaw, {pose.rightHandOffset[0], pose.rightHandOffset[1], pose.rightHandOffset[2]});
         store({head.x + right.x, head.y + right.y, head.z + right.z}, bodyYaw, packet.rightControllerPos,
@@ -237,7 +232,7 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
     }
     // The right trigger waits until the raised hand has hovered for 150 ms, so UI sees the pointer
     // arrive before the press.
-    const bool rightSettled = pose.pointingSeconds <= 0.0f || pose.pointingAge >= 0.15f;
+    const bool rightSettled = !pose.pointing || pose.pointingAge >= 0.15f;
     if (pressedKeys.contains(TriggerMouseKey) && !leftHand && rightSettled)
     {
         packet.buttonState |= oxr::protocol::BUTTON_RIGHT_TRIGGER;

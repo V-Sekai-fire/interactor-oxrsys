@@ -30,7 +30,9 @@ struct SimulatorTrackingPose
     // walking and turning. While pointing, the right, dominant hand rises to just under the line of sight.
     float leftHandOffset[3] = {-0.22f, -0.72f, -0.05f};
     float rightHandOffset[3] = {0.22f, -0.72f, -0.05f};
-    float pointingSeconds = 0.0f;
+    // Pointing latches with no time limit (WCAG 2.2 SC 2.2.1): the first trigger or system press
+    // raises the hand and it stays up until the user lowers it.
+    bool pointing = false;
     float pointingAge = 0.0f;
 };
 

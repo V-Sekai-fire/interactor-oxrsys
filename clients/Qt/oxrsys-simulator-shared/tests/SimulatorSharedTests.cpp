@@ -314,10 +314,14 @@ void testHandsAimAtGaze()
     const float miss = std::sqrt(std::max(0.0f, dx * dx + dy * dy + dz * dz - along * along));
     expect(along > 0.0f && miss < 0.001f, "Expected the hand's laser within 1 mm of the gaze point at 0.6 m");
 
-    advanceSimulatorTracking(pose, {}, {}, 2.0f);
+    advanceSimulatorTracking(pose, {}, {}, 60.0f);
+    TrackingPacket held = {};
+    fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, held);
+    expect(held.rightControllerPos[1] > 1.0f, "Expected pointing to stay up with no time limit");
+    pose.pointing = false;
     TrackingPacket lowered = {};
     fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, lowered);
-    expect(lowered.rightControllerPos[1] < 1.0f, "Expected the right hand back at the side after pointing");
+    expect(lowered.rightControllerPos[1] < 1.0f, "Expected the right hand back at the side once lowered");
 }
 
 void testControllersPresentFlag()
