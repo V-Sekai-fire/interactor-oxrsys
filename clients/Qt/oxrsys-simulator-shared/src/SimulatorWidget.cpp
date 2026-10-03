@@ -549,6 +549,12 @@ void SimulatorWidget::readPendingDiscoveryDatagrams()
             continue;
         }
 
+        // The runtime keeps announcing while it streams; only a new runtime restarts the connection.
+        if (state_ == State::Streaming && sender.isEqual(serverAddress_))
+        {
+            continue;
+        }
+
         discoveredServer_ = announce;
         serverAddress_ = sender;
         setState(State::Discovered, "Runtime discovered");
