@@ -18,6 +18,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSlider>
 #include <QTimer>
 #include <QUdpSocket>
@@ -138,15 +139,18 @@ public:
         mouseCaptured_ = mouseCaptured;
         streaming_ = streaming;
         update();
+        publishOverlay();
     }
 
-    void setVideoView(QWidget* view)
+    void setVideoView(QWidget* view, PyroWaveDecoder* decoder)
     {
         QVBoxLayout* layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->addWidget(view);
         videoView_ = view;
+        decoder_ = decoder;
         videoView_->setFocusPolicy(Qt::NoFocus);
+        videoView_->installEventFilter(this);
         videoView_->hide();
     }
 
@@ -155,6 +159,7 @@ public:
         if (videoView_ != nullptr && videoView_->isVisible() != active)
         {
             videoView_->setVisible(active);
+            publishOverlay();
         }
     }
 
@@ -172,9 +177,27 @@ public:
         fecRecoveries_ = fecRecoveries;
         decodeErrors_ = decodeErrors;
         update();
+        publishOverlay();
     }
 
 protected:
+    // Focus stays here; on the container it would try to activate the view window, which refuses focus.
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (watched == videoView_ && event->type() == QEvent::FocusIn)
+        {
+            setFocus(Qt::OtherFocusReason);
+            return true;
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
+    void resizeEvent(QResizeEvent* event) override
+    {
+        QWidget::resizeEvent(event);
+        publishOverlay();
+    }
+
     void paintEvent(QPaintEvent*) override
     {
         QPainter painter(this);
@@ -226,18 +249,46 @@ protected:
                              videoStatus_.isEmpty() ? "Waiting for video" : videoStatus_);
         }
 
-        const float centerX = static_cast<float>(bounds.center().x());
-        const float centerY = static_cast<float>(bounds.center().y());
-        const QPointF reticle(centerX + std::sin(yaw_) * 42.0f,
-                              centerY - std::sin(pitch_) * 85.0f);
+        drawReticle(painter, reticleCenter(bounds));
+        drawPoseBadge(painter, poseBadgeRect(bounds));
+        drawCaptureBadge(painter, captureBadgeRect(bounds));
+        drawVideoBadge(painter, videoBadgeRect(bounds));
+    }
+
+private:
+    QPointF reticleCenter(const QRectF& bounds) const
+    {
+        return QPointF(bounds.center().x() + std::sin(yaw_) * 42.0f, bounds.center().y() - std::sin(pitch_) * 85.0f);
+    }
+
+    static QRectF poseBadgeRect(const QRectF& bounds)
+    {
+        return QRectF(bounds.left() + 14.0, bounds.bottom() - 58.0, 260.0, 42.0);
+    }
+
+    static QRectF captureBadgeRect(const QRectF& bounds)
+    {
+        return QRectF(bounds.right() - 158.0, bounds.top() + 14.0, 144.0, 32.0);
+    }
+
+    static QRectF videoBadgeRect(const QRectF& bounds)
+    {
+        return QRectF(bounds.right() - 374.0, bounds.bottom() - 58.0, 360.0, 42.0);
+    }
+
+    static void drawReticle(QPainter& painter, const QPointF& reticle)
+    {
         painter.setPen(QPen(QColor(242, 244, 248, 210), 1.5));
+        painter.setBrush(Qt::NoBrush);
         painter.drawLine(reticle + QPointF(-16, 0), reticle + QPointF(-4, 0));
         painter.drawLine(reticle + QPointF(4, 0), reticle + QPointF(16, 0));
         painter.drawLine(reticle + QPointF(0, -16), reticle + QPointF(0, -4));
         painter.drawLine(reticle + QPointF(0, 4), reticle + QPointF(0, 16));
         painter.drawEllipse(reticle, 5.0, 5.0);
+    }
 
-        const QRectF badge(bounds.left() + 14.0, bounds.bottom() - 58.0, 260.0, 42.0);
+    void drawPoseBadge(QPainter& painter, const QRectF& badge) const
+    {
         painter.setPen(Qt::NoPen);
         painter.setBrush(QColor(8, 11, 16, 205));
         painter.drawRoundedRect(badge, 8.0, 8.0);
@@ -252,24 +303,27 @@ protected:
                              .arg(position_[0], 0, 'f', 2)
                              .arg(position_[1], 0, 'f', 2)
                              .arg(position_[2], 0, 'f', 2));
+    }
 
-        const QRectF captureBadge(bounds.right() - 158.0, bounds.top() + 14.0, 144.0, 32.0);
+    void drawCaptureBadge(QPainter& painter, const QRectF& badge) const
+    {
         painter.setBrush(mouseCaptured_ ? QColor(42, 145, 72, 220) : QColor(52, 59, 68, 220));
         painter.setPen(Qt::NoPen);
-        painter.drawRoundedRect(captureBadge, 8.0, 8.0);
+        painter.drawRoundedRect(badge, 8.0, 8.0);
         painter.setPen(QColor(242, 244, 248));
-        painter.drawText(captureBadge, Qt::AlignCenter,
-                         mouseCaptured_ ? "Mouse captured" : "Mouse free");
+        painter.drawText(badge, Qt::AlignCenter, mouseCaptured_ ? "Mouse captured" : "Mouse free");
+    }
 
-        const QRectF videoBadge(bounds.right() - 292.0, bounds.bottom() - 58.0, 278.0, 42.0);
+    void drawVideoBadge(QPainter& painter, const QRectF& badge) const
+    {
         painter.setBrush(QColor(8, 11, 16, 205));
         painter.setPen(Qt::NoPen);
-        painter.drawRoundedRect(videoBadge, 8.0, 8.0);
+        painter.drawRoundedRect(badge, 8.0, 8.0);
         painter.setPen(QColor(242, 244, 248));
-        painter.drawText(videoBadge.adjusted(12, 6, -12, -22),
+        painter.drawText(badge.adjusted(12, 6, -12, -22),
                          videoStatus_.isEmpty() ? "Waiting for video" : videoStatus_);
         painter.setPen(QColor(154, 160, 166));
-        painter.drawText(videoBadge.adjusted(12, 22, -12, -6),
+        painter.drawText(badge.adjusted(12, 22, -12, -6),
                          QString("%1 packets  %2 frames  %3 drops  %4 fec  %5 errors")
                              .arg(videoPackets_)
                              .arg(videoFrames_)
@@ -278,12 +332,72 @@ protected:
                              .arg(decodeErrors_));
     }
 
+    // Badges render to opaque images over the backdrop colour; the decoder blits them over the video.
+    template <typename Draw>
+    PyroWaveDecoder::OverlayBadge renderBadge(const QRectF& badge, qreal dpr, Draw draw) const
+    {
+        QImage image((badge.size() * dpr).toSize(), QImage::Format_RGBA8888);
+        image.setDevicePixelRatio(dpr);
+        image.fill(QColor(4, 6, 9));
+        QPainter painter(&image);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setFont(font());
+        painter.translate(-badge.topLeft());
+        draw(painter, badge);
+        painter.end();
+        return {(badge.topLeft() * dpr).toPoint(), image};
+    }
+
+    // The status changes with every packet, so the overlay is only marked here and drawn once per frame.
+    void publishOverlay()
+    {
+        overlayDirty_ = true;
+    }
+
+public:
+    void flushOverlay()
+    {
+        if (!overlayDirty_ || decoder_ == nullptr || videoView_ == nullptr || !videoView_->isVisible())
+        {
+            return;
+        }
+        overlayDirty_ = false;
+        const qreal dpr = devicePixelRatioF();
+        const QRectF bounds = rect();
+        std::vector<PyroWaveDecoder::OverlayBadge> badges;
+        badges.push_back(renderBadge(poseBadgeRect(bounds), dpr,
+                                     [this](QPainter& p, const QRectF& r) { drawPoseBadge(p, r); }));
+        badges.push_back(renderBadge(captureBadgeRect(bounds), dpr,
+                                     [this](QPainter& p, const QRectF& r) { drawCaptureBadge(p, r); }));
+        badges.push_back(renderBadge(videoBadgeRect(bounds), dpr,
+                                     [this](QPainter& p, const QRectF& r) { drawVideoBadge(p, r); }));
+
+        const QPointF c = reticleCenter(bounds);
+        const QRectF segments[] = {
+            {c.x() - 16, c.y() - 0.75, 12, 1.5}, {c.x() + 4, c.y() - 0.75, 12, 1.5},
+            {c.x() - 0.75, c.y() - 16, 1.5, 12}, {c.x() - 0.75, c.y() + 4, 1.5, 12},
+            {c.x() - 5, c.y() - 5, 10, 1.5},     {c.x() - 5, c.y() + 3.5, 10, 1.5},
+            {c.x() - 5, c.y() - 5, 1.5, 10},     {c.x() + 3.5, c.y() - 5, 1.5, 10},
+        };
+        std::vector<QRect> lines;
+        for (const QRectF& segment : segments)
+        {
+            const QRectF scaled(segment.topLeft() * dpr, segment.size() * dpr);
+            lines.push_back(scaled.toAlignedRect());
+        }
+        decoder_->setOverlay(std::move(badges), std::move(lines));
+    }
+
 private:
+
+
     float yaw_ = 0.0f;
     float pitch_ = 0.0f;
     float roll_ = 0.0f;
     float position_[3] = {0.0f, 1.6f, 0.0f};
     QWidget* videoView_ = nullptr;
+    PyroWaveDecoder* decoder_ = nullptr;
+    bool overlayDirty_ = false;
     QString videoStatus_ = "Waiting for video";
     quint64 videoPackets_ = 0;
     quint64 videoFrames_ = 0;
@@ -1020,7 +1134,8 @@ bool SimulatorWidget::ensureVideoDecoder()
     }
     if (!videoViewCreated_ && previewWidget_ != nullptr)
     {
-        previewWidget_->setVideoView(QWidget::createWindowContainer(pyrowave_.createView(previewWidget_), previewWidget_));
+        previewWidget_->setVideoView(QWidget::createWindowContainer(pyrowave_.createView(previewWidget_), previewWidget_),
+                                     &pyrowave_);
         videoViewCreated_ = true;
     }
     return true;
@@ -1036,6 +1151,10 @@ bool SimulatorWidget::decodeVideoFrame(const AssembledVideoFrame& frame)
     if (!ensureVideoDecoder() || frame.nalUnit.isEmpty())
     {
         return false;
+    }
+    if (previewWidget_ != nullptr)
+    {
+        previewWidget_->flushOverlay();
     }
     if (!pyrowave_.decode(frame.nalUnit, frame.presentationTimeNs))
     {

@@ -133,12 +133,24 @@ struct PyroWaveDecoder::Gpu
     std::vector<VkSemaphore> rendered;
     VkSemaphore acquired = VK_NULL_HANDLE;
 
+    static constexpr uint32_t AtlasSize = 2048;
+    Image atlas; // overlay badges stacked top to bottom; left in TRANSFER_SRC_OPTIMAL
+    Image white; // one white texel, stretched into the overlay lines
+    Buffer overlayStaging;
+    std::vector<OverlayBadge> badges;
+    std::vector<int> badgeRows; // each badge's top row in the atlas, -1 when it did not fit
+    std::vector<QRect> lines;
+    bool overlayDirty = false;
+
     ~Gpu()
     {
         releaseFrame();
         if (device != VK_NULL_HANDLE)
         {
             releaseSwapchain();
+            releaseImage(atlas);
+            releaseImage(white);
+            releaseBuffer(overlayStaging);
             vkDestroySemaphore(device, acquired, nullptr);
             vkDestroyDescriptorPool(device, descriptorPool, nullptr);
             vkDestroyPipeline(device, pipeline, nullptr);
@@ -458,7 +470,108 @@ struct PyroWaveDecoder::Gpu
         allocInfo.descriptorPool = descriptorPool;
         allocInfo.descriptorSetCount = 1;
         allocInfo.pSetLayouts = &setLayout;
-        return vkAllocateDescriptorSets(device, &allocInfo, &set) == VK_SUCCESS;
+        if (vkAllocateDescriptorSets(device, &allocInfo, &set) != VK_SUCCESS)
+        {
+            return false;
+        }
+
+        const VkImageUsageFlags blitSource = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        if (!makeImage(atlas, VK_FORMAT_R8G8B8A8_UNORM, AtlasSize, AtlasSize, blitSource) ||
+            !makeImage(white, VK_FORMAT_R8G8B8A8_UNORM, 1, 1, blitSource) ||
+            !makeBuffer(overlayStaging, VkDeviceSize(AtlasSize) * AtlasSize * 4, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) ||
+            !beginCommands())
+        {
+            return false;
+        }
+        const VkClearColorValue opaqueWhite = {{1.0f, 1.0f, 1.0f, 1.0f}};
+        const VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        for (VkImage image : {atlas.image, white.image})
+        {
+            transition(image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
+                       VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+            vkCmdClearColorImage(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &opaqueWhite, 1, &range);
+            transition(image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                       VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT);
+        }
+        return submitAndWait();
+    }
+
+    // Copies the badges into the atlas, one under the next; a badge that does not fit is skipped.
+    void recordOverlayUpload()
+    {
+        if (!overlayDirty)
+        {
+            return;
+        }
+        overlayDirty = false;
+        std::vector<VkBufferImageCopy> regions;
+        badgeRows.assign(badges.size(), -1);
+        uint32_t y = 0;
+        for (size_t i = 0; i < badges.size(); ++i)
+        {
+            const QImage image = badges[i].image.convertToFormat(QImage::Format_RGBA8888);
+            const uint32_t w = uint32_t(image.width());
+            const uint32_t h = uint32_t(image.height());
+            if (w == 0 || h == 0 || w > AtlasSize || y + h > AtlasSize)
+            {
+                continue;
+            }
+            uint8_t* rows = static_cast<uint8_t*>(overlayStaging.mapped) + VkDeviceSize(y) * AtlasSize * 4;
+            for (uint32_t row = 0; row < h; ++row)
+            {
+                std::memcpy(rows + VkDeviceSize(row) * AtlasSize * 4, image.constScanLine(int(row)), w * 4);
+            }
+            VkBufferImageCopy region = {};
+            region.bufferOffset = VkDeviceSize(y) * AtlasSize * 4;
+            region.bufferRowLength = AtlasSize;
+            region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+            region.imageOffset = {0, int32_t(y), 0};
+            region.imageExtent = {w, h, 1};
+            regions.push_back(region);
+            badgeRows[i] = int(y);
+            y += h;
+        }
+        if (regions.empty())
+        {
+            return;
+        }
+        transition(atlas.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                   VK_PIPELINE_STAGE_TRANSFER_BIT);
+        vkCmdCopyBufferToImage(cmd, overlayStaging.buffer, atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               uint32_t(regions.size()), regions.data());
+        transition(atlas.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                   VK_PIPELINE_STAGE_TRANSFER_BIT);
+    }
+
+    // Blits source into dst on the target, clipped to the swapchain; an empty srcSize stretches one texel.
+    void blitClipped(VkImage source, QPoint srcOrigin, QSize srcSize, QRect dst, VkImage target)
+    {
+        const QRect clipped = dst.intersected(QRect(0, 0, int(swapExtent.width), int(swapExtent.height)));
+        if (clipped.isEmpty())
+        {
+            return;
+        }
+        VkImageBlit blit = {};
+        blit.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        blit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        if (srcSize.isEmpty())
+        {
+            blit.srcOffsets[1] = {1, 1, 1};
+        }
+        else
+        {
+            const QPoint shift = clipped.topLeft() - dst.topLeft();
+            blit.srcOffsets[0] = {srcOrigin.x() + shift.x(), srcOrigin.y() + shift.y(), 0};
+            blit.srcOffsets[1] = {blit.srcOffsets[0].x + clipped.width(), blit.srcOffsets[0].y + clipped.height(), 1};
+        }
+        blit.dstOffsets[0] = {clipped.left(), clipped.top(), 0};
+        blit.dstOffsets[1] = {clipped.left() + clipped.width(), clipped.top() + clipped.height(), 1};
+        vkCmdBlitImage(cmd, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, target,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_NEAREST);
     }
 
     bool beginCommands()
@@ -715,6 +828,20 @@ struct PyroWaveDecoder::Gpu
         blit.dstOffsets[1] = {x + w, y + h, 1};
         vkCmdBlitImage(cmd, frame.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, target,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+        barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_ACCESS_TRANSFER_WRITE_BIT);
+        for (size_t i = 0; i < badges.size() && i < badgeRows.size(); ++i)
+        {
+            if (badgeRows[i] >= 0)
+            {
+                blitClipped(atlas.image, QPoint(0, badgeRows[i]), badges[i].image.size(),
+                            QRect(badges[i].position, badges[i].image.size()), target);
+            }
+        }
+        for (const QRect& line : lines)
+        {
+            blitClipped(white.image, QPoint(), QSize(), line, target);
+        }
         transition(target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
                    VK_ACCESS_TRANSFER_WRITE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
@@ -793,6 +920,7 @@ struct PyroWaveDecoder::Gpu
         }
         if (index != UINT32_MAX)
         {
+            recordOverlayUpload();
             recordPresent(swapImages[index]);
         }
         const bool presenting = index != UINT32_MAX;
@@ -899,6 +1027,16 @@ void PyroWaveDecoder::reset()
 QSize PyroWaveDecoder::decodedSize() const
 {
     return gpu_ ? QSize(gpu_->width, gpu_->height) : QSize();
+}
+
+void PyroWaveDecoder::setOverlay(std::vector<OverlayBadge> badges, std::vector<QRect> lines)
+{
+    if (gpu_)
+    {
+        gpu_->badges = std::move(badges);
+        gpu_->lines = std::move(lines);
+        gpu_->overlayDirty = true;
+    }
 }
 
 QImage PyroWaveDecoder::snapshot()
