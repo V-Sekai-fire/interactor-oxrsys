@@ -16,7 +16,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QIcon>
+#include <QJsonArray>
 #include <QMenu>
+#include <QProcess>
 #include <QSettings>
 #include <QSystemTrayIcon>
 #include <QTimer>
@@ -73,6 +75,73 @@ void installPackagedFiles()
 QString installedDriverFolder()
 {
     return QDir::toNativeSeparators(qEnvironmentVariable("LOCALAPPDATA") + "/OXRSys/driver/oxrsys");
+}
+
+QJsonObject readJson(const QString& path)
+{
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(file.readAll()).object() : QJsonObject();
+}
+
+QJsonObject openVrPaths()
+{
+    return readJson(qEnvironmentVariable("LOCALAPPDATA") + "/openvr/openvrpaths.vrpath");
+}
+
+// Registers the installed driver with SteamVR's own vrpathreg; per-user, so no prompt.
+void registerSteamVrDriver()
+{
+    const QJsonObject paths = openVrPaths();
+    const QString steamVr = paths.value("runtime").toArray().first().toString();
+    if (steamVr.isEmpty() || !QFileInfo::exists(installedDriverFolder()))
+    {
+        return;
+    }
+    for (const QJsonValue& driver : paths.value("external_drivers").toArray())
+    {
+        if (QDir::toNativeSeparators(driver.toString()).compare(installedDriverFolder(), Qt::CaseInsensitive) == 0)
+        {
+            return;
+        }
+    }
+    QProcess process;
+#if defined(Q_OS_WIN)
+    process.setCreateProcessArgumentsModifier(
+        [](QProcess::CreateProcessArguments* args) { args->flags |= CREATE_NO_WINDOW; });
+#endif
+    process.start(steamVr + "/bin/win64/vrpathreg.exe", {"adddriver", installedDriverFolder()});
+    process.waitForFinished(15000);
+}
+
+// SteamVR picks one headset driver among those that load; forcedDriver makes it ours while OXRSys is
+// the picked runtime, and picking another runtime hands the choice back. Returns whether it changed.
+bool useSteamVrHeadset(bool ours)
+{
+    const QString config = openVrPaths().value("config").toArray().first().toString();
+    const QString path = config + "/steamvr.vrsettings";
+    QJsonObject settings = readJson(path);
+    if (config.isEmpty() || settings.isEmpty())
+    {
+        return false;
+    }
+    QJsonObject steamvr = settings.value("steamvr").toObject();
+    const QString forced = steamvr.value("forcedDriver").toString();
+    if (ours == (forced == "oxrsys"))
+    {
+        return false;
+    }
+    if (ours)
+    {
+        steamvr.insert("forcedDriver", "oxrsys");
+    }
+    else
+    {
+        steamvr.remove("forcedDriver");
+    }
+    settings.insert("steamvr", steamvr);
+    QFile file(path);
+    return file.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+        file.write(QJsonDocument(settings).toJson(QJsonDocument::Indented)) > 0;
 }
 
 QString registryValue(const QString& name)
@@ -150,6 +219,7 @@ HomeTray::HomeTray(QString runtimeStatusPath, QString logDirectory, std::functio
     , logDirectory_(std::move(logDirectory))
 {
     installPackagedFiles();
+    registerSteamVrDriver();
     menu_ = new QMenu();
     status_ = menu_->addAction("Idle");
     status_->setEnabled(false);
@@ -283,7 +353,11 @@ void HomeTray::makeDefaultRuntime(const QString& manifest)
         script += QString("Set-ItemProperty -Path '%1' -Name PreviousActiveRuntime -Value '%2'; ").arg(key, active);
     }
     script += QString("Set-ItemProperty -Path '%1' -Name ActiveRuntime -Value '%2'").arg(key, manifest);
-    runElevatedPowerShell(script);
+    if (runElevatedPowerShell(script) &&
+        useSteamVrHeadset(manifest.compare(installedRuntimeManifest(), Qt::CaseInsensitive) == 0) && icon_ != nullptr)
+    {
+        icon_->showMessage("SteamVR headset changed", "Restart SteamVR for the headset to follow the runtime you picked.");
+    }
 #else
     Q_UNUSED(manifest);
 #endif
