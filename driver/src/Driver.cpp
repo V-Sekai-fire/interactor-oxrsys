@@ -46,6 +46,9 @@ constexpr uint32_t kEyeHeight = 1680;
 constexpr float kRefreshHz = 90.0f;
 constexpr float kIpdMeters = 0.063f;
 constexpr char kSettingsSection[] = "driver_oxrsys";
+// Our own tracking universe: room setup saved for another system's universe would move our floor,
+// whose poses already put it at y = 0. The value spells OXRS.
+constexpr uint64_t kUniverseId = 0x4F585253;
 
 IVRServerDriverHost* gHost = nullptr;
 IVRProperties* gProperties = nullptr;
@@ -756,7 +759,7 @@ public:
         WriteProperty(c, Prop_SecondsFromVsyncToPhotons_Float, 0.0f, k_unFloatPropertyTag);
         WriteProperty(c, Prop_DriverDirectModeSendsVsyncEvents_Bool, true, k_unBoolPropertyTag);
         WriteProperty(c, Prop_IsOnDesktop_Bool, false, k_unBoolPropertyTag);
-        WriteProperty(c, Prop_CurrentUniverseId_Uint64, static_cast<uint64_t>(2), k_unUint64PropertyTag);
+        WriteProperty(c, Prop_CurrentUniverseId_Uint64, kUniverseId, k_unUint64PropertyTag);
         WriteProperty(c, Prop_GraphicsAdapterLuid_Uint64, direct_.AdapterLuid(), k_unUint64PropertyTag);
         // The headset's button, as on a headset whose button selects by gaze when no controller is held.
         WriteString(c, Prop_ControllerType_String, "oxrsys_hmd");
