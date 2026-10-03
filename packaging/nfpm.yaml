@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# nFPM config for the Linux runtime: scripts/linux_package_runtime.sh stages the /opt/oxrsys tree
+# and sets OXRSYS_STAGE and OXRSYS_PKG_VERSION, then nFPM writes .deb and .rpm natively.
+name: oxrsys-runtime
+arch: amd64
+platform: linux
+version: ${OXRSYS_PKG_VERSION}
+section: libs
+priority: optional
+maintainer: V-Sekai <ernest.lee@chibifire.com>
+description: |
+  OXRSys OpenXR runtime: streams OpenXR apps to headsets over PyroWave. Installed under
+  /opt/oxrsys; installing does not make it the active OpenXR runtime.
+vendor: V-Sekai
+homepage: https://github.com/V-Sekai-fire/oxrsys
+license: MPL-2.0
+
+contents:
+  - src: ${OXRSYS_STAGE}/opt/oxrsys
+    dst: /opt/oxrsys
+    expand: true
