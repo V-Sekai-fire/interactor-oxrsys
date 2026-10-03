@@ -23,16 +23,8 @@
 #include <QUdpSocket>
 #include <QVBoxLayout>
 #include <QWheelEvent>
+#include <QWindow>
 
-#if OXRSYS_QT_SIMULATOR_HAS_FFMPEG
-extern "C"
-{
-#include <libavcodec/avcodec.h>
-#include <libavutil/error.h>
-#include <libavutil/imgutils.h>
-#include <libswscale/swscale.h>
-}
-#endif
 
 #include <algorithm>
 #include <chrono>
@@ -60,18 +52,6 @@ QString platformSimulatorDeviceName()
     return "OXRSys Qt Simulator Linux";
 #else
     return "OXRSys Qt Simulator";
-#endif
-}
-
-QString ffmpegErrorString(int error)
-{
-#if OXRSYS_QT_SIMULATOR_HAS_FFMPEG
-    char buffer[AV_ERROR_MAX_STRING_SIZE] = {};
-    av_strerror(error, buffer, sizeof(buffer));
-    return QString::fromUtf8(buffer);
-#else
-    Q_UNUSED(error);
-    return "FFmpeg support is not enabled";
 #endif
 }
 
@@ -160,11 +140,23 @@ public:
         update();
     }
 
-    void setVideoFrame(const QImage& frame)
+    void setVideoView(QWidget* view)
     {
-        // The stream is side-by-side stereo; the preview is the left eye.
-        videoFrame_ = frame.isNull() ? frame : frame.copy(0, 0, frame.width() / 2, frame.height());
-        update();
+        QVBoxLayout* layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->addWidget(view);
+        videoView_ = view;
+        videoView_->setFocusPolicy(Qt::NoFocus);
+        videoView_->installEventFilter(this);
+        videoView_->hide();
+    }
+
+    void setVideoActive(bool active)
+    {
+        if (videoView_ != nullptr && videoView_->isVisible() != active)
+        {
+            videoView_->setVisible(active);
+        }
     }
 
     void setStatusOverlay(const QString& videoStatus,
@@ -184,24 +176,23 @@ public:
     }
 
 protected:
+    // Focus stays here; on the container it would try to activate the view window, which refuses focus.
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (watched == videoView_ && event->type() == QEvent::FocusIn)
+        {
+            setFocus(Qt::OtherFocusReason);
+            return true;
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
     void paintEvent(QPaintEvent*) override
     {
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
 
         const QRectF bounds = rect();
-        if (!videoFrame_.isNull())
-        {
-            painter.fillRect(bounds, QColor(4, 6, 9));
-            const QSizeF scaledSize = videoFrame_.size().scaled(bounds.size().toSize(), Qt::KeepAspectRatio);
-            const QRectF target(bounds.center().x() - scaledSize.width() * 0.5,
-                                bounds.center().y() - scaledSize.height() * 0.5,
-                                scaledSize.width(),
-                                scaledSize.height());
-            painter.drawImage(target, videoFrame_);
-            painter.fillRect(bounds, QColor(0, 0, 0, 45));
-        }
-        else
         {
             const QColor sky(18, 24, 31);
             const QColor floor(13, 17, 22);
@@ -304,7 +295,7 @@ private:
     float pitch_ = 0.0f;
     float roll_ = 0.0f;
     float position_[3] = {0.0f, 1.6f, 0.0f};
-    QImage videoFrame_;
+    QWidget* videoView_ = nullptr;
     QString videoStatus_ = "Waiting for video";
     quint64 videoPackets_ = 0;
     quint64 videoFrames_ = 0;
@@ -493,11 +484,7 @@ void SimulatorWidget::connectToDiscoveredRuntime()
     connectPacket.type = oxr::protocol::MessageType::ClientConnect;
     connectPacket.versionMajor = 1;
     connectPacket.versionMinor = 0;
-#if OXRSYS_QT_SIMULATOR_HAS_NVDEC
-    connectPacket.preferredCodec = static_cast<uint32_t>(oxr::protocol::VideoCodec::AV1);
-#else
-    connectPacket.preferredCodec = static_cast<uint32_t>(oxr::protocol::VideoCodec::H265);
-#endif
+    connectPacket.preferredCodec = static_cast<uint32_t>(oxr::protocol::VideoCodec::PyroWave);
     connectPacket.maxBitrateMbps = oxr::protocol::CLIENT_MAX_BITRATE_USE_SERVER_CONFIG;
     connectPacket.refreshRateHz = std::max<uint32_t>(discoveredServer_.refreshRateHz, 60);
     const QByteArray deviceName = platformSimulatorDeviceName().toUtf8();
@@ -883,7 +870,6 @@ bool SimulatorWidget::startVideoReceiver()
     lastKeyframeRequestTimeNs_ = 0;
     updatePreviewStatus();
 
-    videoSocket_->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 8 * 1024 * 1024);
     const bool bound = videoSocket_->bind(QHostAddress::AnyIPv4,
                                           oxr::protocol::VIDEO_PORT,
                                           QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
@@ -895,6 +881,8 @@ bool SimulatorWidget::startVideoReceiver()
                      .arg(videoSocket_->errorString()));
         return false;
     }
+    // Only a bound socket takes the option, and one frame is about 80 datagrams.
+    videoSocket_->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 8 * 1024 * 1024);
     return ensureVideoDecoder();
 #endif
 }
@@ -907,7 +895,7 @@ void SimulatorWidget::stopVideoReceiver()
     }
     if (previewWidget_ != nullptr)
     {
-        previewWidget_->setVideoFrame(QImage());
+        previewWidget_->setVideoActive(false);
     }
     videoAssembler_.reset();
     videoPacketsReceived_ = 0;
@@ -1035,154 +1023,25 @@ int64_t SimulatorWidget::monotonicNowNs() const
         .count();
 }
 
-#if OXRSYS_QT_SIMULATOR_HAS_FFMPEG
-bool SimulatorWidget::ensureVideoDecoder()
-{
-    if (videoDecoder_ != nullptr)
-    {
-        return true;
-    }
-
-    const AVCodec* codec = avcodec_find_decoder(AV_CODEC_ID_HEVC);
-    if (codec == nullptr)
-    {
-        setState(State::Discovered, "H.265 decoder not found");
-        return false;
-    }
-
-    videoDecoder_ = avcodec_alloc_context3(codec);
-    decodedFrame_ = av_frame_alloc();
-    decodePacket_ = av_packet_alloc();
-    if (videoDecoder_ == nullptr || decodedFrame_ == nullptr || decodePacket_ == nullptr)
-    {
-        resetVideoDecoder();
-        setState(State::Discovered, "Failed to allocate video decoder");
-        return false;
-    }
-
-    const int result = avcodec_open2(videoDecoder_, codec, nullptr);
-    if (result < 0)
-    {
-        const QString error = ffmpegErrorString(result);
-        resetVideoDecoder();
-        setState(State::Discovered, "Failed to open H.265 decoder: " + error);
-        return false;
-    }
-    return true;
-}
-
-void SimulatorWidget::resetVideoDecoder()
-{
-    if (swsContext_ != nullptr)
-    {
-        sws_freeContext(swsContext_);
-        swsContext_ = nullptr;
-    }
-    if (decodePacket_ != nullptr)
-    {
-        av_packet_free(&decodePacket_);
-    }
-    if (decodedFrame_ != nullptr)
-    {
-        av_frame_free(&decodedFrame_);
-    }
-    if (videoDecoder_ != nullptr)
-    {
-        avcodec_free_context(&videoDecoder_);
-    }
-}
-
-bool SimulatorWidget::decodeVideoFrame(const AssembledVideoFrame& frame)
-{
-    if (!ensureVideoDecoder() || frame.nalUnit.isEmpty())
-    {
-        return false;
-    }
-
-    av_packet_unref(decodePacket_);
-    const int packetResult = av_new_packet(decodePacket_, static_cast<int>(frame.nalUnit.size()));
-    if (packetResult < 0)
-    {
-        return false;
-    }
-    std::memcpy(decodePacket_->data,
-                frame.nalUnit.constData(),
-                static_cast<size_t>(frame.nalUnit.size()));
-    decodePacket_->pts = frame.presentationTimeNs;
-
-    const int sendResult = avcodec_send_packet(videoDecoder_, decodePacket_);
-    av_packet_unref(decodePacket_);
-    if (sendResult < 0)
-    {
-        return false;
-    }
-
-    bool decodedAnyFrame = false;
-    while (true)
-    {
-        const int receiveResult = avcodec_receive_frame(videoDecoder_, decodedFrame_);
-        if (receiveResult == AVERROR(EAGAIN) || receiveResult == AVERROR_EOF)
-        {
-            break;
-        }
-        if (receiveResult < 0)
-        {
-            return decodedAnyFrame;
-        }
-
-        QImage image(decodedFrame_->width, decodedFrame_->height, QImage::Format_RGB888);
-        uint8_t* destinationData[4] = {image.bits(), nullptr, nullptr, nullptr};
-        int destinationLinesize[4] = {static_cast<int>(image.bytesPerLine()), 0, 0, 0};
-        swsContext_ = sws_getCachedContext(swsContext_,
-                                            decodedFrame_->width,
-                                            decodedFrame_->height,
-                                            static_cast<AVPixelFormat>(decodedFrame_->format),
-                                            decodedFrame_->width,
-                                            decodedFrame_->height,
-                                            AV_PIX_FMT_RGB24,
-                                            SWS_BILINEAR,
-                                            nullptr,
-                                            nullptr,
-                                            nullptr);
-        if (swsContext_ == nullptr)
-        {
-            av_frame_unref(decodedFrame_);
-            return decodedAnyFrame;
-        }
-
-        sws_scale(swsContext_,
-                  decodedFrame_->data,
-                  decodedFrame_->linesize,
-                  0,
-                  decodedFrame_->height,
-                  destinationData,
-                  destinationLinesize);
-
-        if (previewWidget_ != nullptr)
-        {
-            previewWidget_->setVideoFrame(image.copy());
-        }
-        ++videoFramesDecoded_;
-        decodedAnyFrame = true;
-        av_frame_unref(decodedFrame_);
-    }
-    return decodedAnyFrame;
-}
-#elif OXRSYS_QT_SIMULATOR_HAS_NVDEC
 bool SimulatorWidget::ensureVideoDecoder()
 {
     QString error;
-    if (!nvdec_.initialize(&error))
+    if (!pyrowave_.initialize(&error))
     {
         setState(State::Discovered, error);
         return false;
     }
+    if (!videoViewCreated_ && previewWidget_ != nullptr)
+    {
+        previewWidget_->setVideoView(QWidget::createWindowContainer(pyrowave_.createView(), previewWidget_));
+        videoViewCreated_ = true;
+    }
     return true;
 }
 
 void SimulatorWidget::resetVideoDecoder()
 {
-    nvdec_.reset();
+    pyrowave_.reset();
 }
 
 bool SimulatorWidget::decodeVideoFrame(const AssembledVideoFrame& frame)
@@ -1191,28 +1050,26 @@ bool SimulatorWidget::decodeVideoFrame(const AssembledVideoFrame& frame)
     {
         return false;
     }
-    QList<QImage> images;
-    if (!nvdec_.decode(frame.nalUnit, frame.presentationTimeNs, images))
+    if (!pyrowave_.decode(frame.nalUnit, frame.presentationTimeNs))
     {
         return false;
     }
     if (previewWidget_ != nullptr)
     {
-        previewWidget_->setVideoFrame(images.last());
+        previewWidget_->setVideoActive(true);
     }
     const quint64 before = videoFramesDecoded_;
-    videoFramesDecoded_ += static_cast<quint64>(images.size());
+    ++videoFramesDecoded_;
     if (before == 0)
     {
-        qInfo("NVDEC: first AV1 frame decoded, %dx%d", images.last().width(), images.last().height());
+        qInfo("PyroWave: first frame decoded, %dx%d", pyrowave_.decodedSize().width(), pyrowave_.decodedSize().height());
     }
-    if (!snapshotPath_.isEmpty() && before < 90 && videoFramesDecoded_ >= 90)
+    if (!snapshotPath_.isEmpty() && videoFramesDecoded_ == 90)
     {
-        qInfo("NVDEC: snapshot %s", images.last().save(snapshotPath_) ? "saved" : "failed");
+        qInfo("PyroWave: snapshot %s", pyrowave_.snapshot().save(snapshotPath_) ? "saved" : "failed");
     }
     return true;
 }
-#endif
 
 void SimulatorWidget::setMouseCaptured(bool captured)
 {

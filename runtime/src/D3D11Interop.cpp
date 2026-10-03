@@ -47,33 +47,19 @@ struct AdapterInfo
     UINT vendorId = 0;
 };
 
-bool AdapterEncodesAv1(IDXGIAdapter1* adapter)
-{
-    const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1};
-    ComPtr<ID3D11Device> device;
-    if (FAILED(D3D11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, levels, 1,
-                                 D3D11_SDK_VERSION, &device, nullptr, nullptr)))
-    {
-        return false;
-    }
-    return NvencSupportsAv1(device.Get());
-}
-
 bool FindRuntimeAdapterUncached(AdapterInfo& out)
 {
-    ComPtr<IDXGIFactory1> factory;
+    ComPtr<IDXGIFactory6> factory;
     if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
     {
         spdlog::error("OXRSys: CreateDXGIFactory1 failed");
         return false;
     }
 
-    // The stream is AV1 from NVENC, so the adapter that renders is the one that can encode
-    // it; on this desk that is the RTX 4090, not the 3090 beside it.
-    SIZE_T bestMemory = 0;
-    bool found = false;
+    // The first hardware adapter in the system's high-performance order renders and encodes.
     ComPtr<IDXGIAdapter1> adapter;
-    for (UINT i = 0; factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i)
+    for (UINT i = 0; SUCCEEDED(factory->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+                                                                   IID_PPV_ARGS(&adapter))); ++i)
     {
         DXGI_ADAPTER_DESC1 desc = {};
         adapter->GetDesc1(&desc);
@@ -81,33 +67,18 @@ bool FindRuntimeAdapterUncached(AdapterInfo& out)
         {
             continue;
         }
-        if (AdapterEncodesAv1(adapter.Get()))
-        {
-            out.adapter = adapter;
-            out.luid = desc.AdapterLuid;
-            out.vendorId = desc.VendorId;
-            spdlog::info("OXRSys: runtime adapter {:04x}:{:04x} (NVENC AV1)", desc.VendorId, desc.DeviceId);
-            return true;
-        }
-        if (!found || desc.DedicatedVideoMemory > bestMemory)
-        {
-            bestMemory = desc.DedicatedVideoMemory;
-            out.adapter = adapter;
-            out.luid = desc.AdapterLuid;
-            out.vendorId = desc.VendorId;
-            found = true;
-        }
+        out.adapter = adapter;
+        out.luid = desc.AdapterLuid;
+        out.vendorId = desc.VendorId;
+        spdlog::info("OXRSys: runtime adapter {:04x}:{:04x}", desc.VendorId, desc.DeviceId);
+        return true;
     }
-    if (found)
-    {
-        spdlog::warn("OXRSys: no adapter encodes AV1 with NVENC; frames will render but not stream");
-    }
-    return found;
+    return false;
 }
 
 bool FindRuntimeAdapter(AdapterInfo& out)
 {
-    // Probing NVENC per adapter costs a device and an encode session each; do it once.
+    // Enumerate once; every swapchain and encoder asks.
     static std::mutex mutex;
     static bool probed = false;
     static bool found = false;

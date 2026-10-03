@@ -41,6 +41,7 @@ private:
     AssembledVideoFrame deliverPendingFrame(int64_t receiveTimeNs) const;
 
     uint32_t pendingFrameIndex_ = UINT32_MAX;
+    uint32_t deliveredFrameIndex_ = UINT32_MAX;
     uint16_t pendingTotalPackets_ = 0;
     uint16_t pendingReceivedPackets_ = 0;
     int64_t pendingPresentationTimeNs_ = 0;

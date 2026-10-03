@@ -43,6 +43,12 @@ QList<AssembledVideoFrame> VideoFrameAssembler::addPacket(
         payloadSize,
         static_cast<qsizetype>(oxr::protocol::MAX_PACKET_PAYLOAD));
 
+    // Parity that trails a frame already delivered would otherwise start it again as a new one.
+    if (header.frameIndex == deliveredFrameIndex_)
+    {
+        return completedFrames;
+    }
+
     const bool fecPacket = (header.flags & oxr::protocol::VIDEO_FLAG_FEC) != 0;
     const bool newFrame =
         pendingTotalPackets_ == 0 || header.frameIndex != pendingFrameIndex_;
@@ -87,6 +93,7 @@ QList<AssembledVideoFrame> VideoFrameAssembler::addPacket(
 
         if (tryFecRecovery() && isComplete())
         {
+            deliveredFrameIndex_ = pendingFrameIndex_;
             completedFrames.append(deliverPendingFrame(receiveTimeNs));
             reset();
         }
@@ -116,11 +123,13 @@ QList<AssembledVideoFrame> VideoFrameAssembler::addPacket(
 
     if (isComplete())
     {
+        deliveredFrameIndex_ = pendingFrameIndex_;
         completedFrames.append(deliverPendingFrame(receiveTimeNs));
         reset();
     }
     else if (tryFecRecovery() && isComplete())
     {
+        deliveredFrameIndex_ = pendingFrameIndex_;
         completedFrames.append(deliverPendingFrame(receiveTimeNs));
         reset();
     }
@@ -196,6 +205,7 @@ QList<AssembledVideoFrame> VideoFrameAssembler::finishPendingFrame(bool countDro
     }
     if (isComplete() || (tryFecRecovery() && isComplete()))
     {
+        deliveredFrameIndex_ = pendingFrameIndex_;
         completedFrames.append(deliverPendingFrame(receiveTimeNs));
     }
     else if (countDropIfIncomplete)

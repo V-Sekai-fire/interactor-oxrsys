@@ -15,23 +15,10 @@
 
 #include <oxrsys/protocol/Protocol.h>
 
-// Video preview: FFmpeg HEVC (Linux, macOS) or NVDEC AV1 (Windows).
-#if OXRSYS_QT_SIMULATOR_HAS_FFMPEG || OXRSYS_QT_SIMULATOR_HAS_NVDEC
+// Video preview: PyroWave, the stream's only codec.
 #define OXRSYS_QT_SIMULATOR_HAS_VIDEO 1
-#else
-#define OXRSYS_QT_SIMULATOR_HAS_VIDEO 0
-#endif
 
-#if OXRSYS_QT_SIMULATOR_HAS_NVDEC
-#include "NvdecDecoder.h"
-#endif
-
-#if OXRSYS_QT_SIMULATOR_HAS_FFMPEG
-struct AVCodecContext;
-struct AVFrame;
-struct AVPacket;
-struct SwsContext;
-#endif
+#include "PyroWaveDecoder.h"
 
 class QLabel;
 class QPushButton;
@@ -141,15 +128,8 @@ private:
     int consecutiveDecodeErrors_ = 0;
     uint64_t lastKeyframeRequestTimeNs_ = 0;
     VideoFrameAssembler videoAssembler_;
-#if OXRSYS_QT_SIMULATOR_HAS_FFMPEG
-    AVCodecContext* videoDecoder_ = nullptr;
-    AVFrame* decodedFrame_ = nullptr;
-    AVPacket* decodePacket_ = nullptr;
-    SwsContext* swsContext_ = nullptr;
-#endif
-#if OXRSYS_QT_SIMULATOR_HAS_NVDEC
-    NvdecDecoder nvdec_;
-#endif
+    PyroWaveDecoder pyrowave_;
+    bool videoViewCreated_ = false;
     bool autoConnect_ = true;
     QString snapshotPath_;
     QElapsedTimer poseClock_;
