@@ -35,3 +35,6 @@ target_include_directories(oxrsys-simulator PRIVATE
 target_link_libraries(oxrsys-simulator PRIVATE
     oxrsys-simulator-shared
 )
+
+# A GUI app on Windows: it opens no console window.
+set_target_properties(oxrsys-simulator PROPERTIES WIN32_EXECUTABLE TRUE)

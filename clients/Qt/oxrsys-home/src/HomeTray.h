@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: MPL-2.0
+
+#pragma once
+
+#include <QObject>
+#include <QString>
+
+#include <functional>
+
+class QAction;
+class QMenu;
+class QSystemTrayIcon;
+
+// The notification-area item: stream status, the default OpenXR runtime toggle, the simulator,
+// the logs, and developer items behind a persisted developer-mode toggle.
+class HomeTray final : public QObject
+{
+    Q_OBJECT
+
+public:
+    HomeTray(QString runtimeStatusPath, QString logDirectory, std::function<void()> openSimulator,
+             std::function<void()> showHome, QObject* parent = nullptr);
+
+    bool isVisible() const;
+
+private:
+    void refresh();
+    void toggleDefaultRuntime(bool makeDefault);
+
+    QString runtimeStatusPath_;
+    QString logDirectory_;
+    QSystemTrayIcon* icon_ = nullptr;
+    QMenu* menu_ = nullptr;
+    QAction* status_ = nullptr;
+    QAction* defaultRuntime_ = nullptr;
+    QAction* developerMode_ = nullptr;
+    QAction* developerSeparator_ = nullptr;
+    QAction* openRuntimeFolder_ = nullptr;
+    QAction* openDriverFolder_ = nullptr;
+};

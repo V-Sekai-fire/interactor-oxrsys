@@ -38,14 +38,22 @@ set(OXRSYS_HOME_CORE_SOURCES
 
 add_executable(oxrsys-home
     ${OXRSYS_HOME_CORE_SOURCES}
+    src/HomeTray.cpp
     src/MainWindow.cpp
     src/main.cpp
 )
+
+# Tray icons rendered from resources/tray.svg by resources/render_tray.ps1.
+qt_add_resources(oxrsys-home "tray" PREFIX "/tray" BASE resources
+    FILES resources/tray_idle.png resources/tray_streaming.png)
 
 target_include_directories(oxrsys-home PRIVATE
     src
     ${OXRSYS_PROTOCOL_INCLUDE_DIR}
 )
+
+# A GUI app on Windows: it lives in the tray, so it opens no console window.
+set_target_properties(oxrsys-home PROPERTIES WIN32_EXECUTABLE TRUE)
 
 target_link_libraries(oxrsys-home PRIVATE
     Qt6::Widgets
