@@ -67,6 +67,15 @@ enum ETrackedDeviceProperty
     Prop_IsOnDesktop_Bool = 2007,
     Prop_DriverDirectModeSendsVsyncEvents_Bool = 2043,
     Prop_GraphicsAdapterLuid_Uint64 = 2045,
+    Prop_NamedIconPathDeviceOff_String = 5001,
+    Prop_NamedIconPathDeviceSearching_String = 5002,
+    Prop_NamedIconPathDeviceSearchingAlert_String = 5003,
+    Prop_NamedIconPathDeviceReady_String = 5004,
+    Prop_NamedIconPathDeviceReadyAlert_String = 5005,
+    Prop_NamedIconPathDeviceNotReady_String = 5006,
+    Prop_NamedIconPathDeviceStandby_String = 5007,
+    Prop_NamedIconPathDeviceAlertLow_String = 5008,
+    Prop_NamedIconPathDeviceStandbyAlert_String = 5009,
 };
 
 inline constexpr PropertyTypeTag_t k_unFloatPropertyTag = 1;

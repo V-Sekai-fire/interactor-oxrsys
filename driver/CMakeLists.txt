@@ -46,6 +46,11 @@ set_target_properties(driver_oxrsys PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${OXRSYS_DRIVER_ROOT}/bin/win64
 )
 configure_file(driver.vrdrivermanifest ${OXRSYS_DRIVER_ROOT}/driver.vrdrivermanifest COPYONLY)
+file(GLOB OXRSYS_DRIVER_ICONS ${CMAKE_CURRENT_SOURCE_DIR}/resources/icons/*.png)
+foreach(icon ${OXRSYS_DRIVER_ICONS})
+    get_filename_component(icon_name ${icon} NAME)
+    configure_file(${icon} ${OXRSYS_DRIVER_ROOT}/resources/icons/${icon_name} COPYONLY)
+endforeach()
 
 find_package(Python3 COMPONENTS Interpreter)
 if(NOT Python3_Interpreter_FOUND)

@@ -635,6 +635,16 @@ public:
         WriteString(c, Prop_ModelNumber_String, "OXRSys");
         WriteString(c, Prop_SerialNumber_String, "OXRSYS-HMD-0");
         WriteString(c, Prop_ManufacturerName_String, "OXRSys");
+        // Status-window icons from resources/icons, drawn from resources/icons/headset.svg.
+        WriteString(c, Prop_NamedIconPathDeviceOff_String, "{oxrsys}/icons/headset_status_off.png");
+        WriteString(c, Prop_NamedIconPathDeviceSearching_String, "{oxrsys}/icons/headset_status_searching.png");
+        WriteString(c, Prop_NamedIconPathDeviceSearchingAlert_String, "{oxrsys}/icons/headset_status_searching_alert.png");
+        WriteString(c, Prop_NamedIconPathDeviceReady_String, "{oxrsys}/icons/headset_status_ready.png");
+        WriteString(c, Prop_NamedIconPathDeviceReadyAlert_String, "{oxrsys}/icons/headset_status_ready_alert.png");
+        WriteString(c, Prop_NamedIconPathDeviceNotReady_String, "{oxrsys}/icons/headset_status_not_ready.png");
+        WriteString(c, Prop_NamedIconPathDeviceStandby_String, "{oxrsys}/icons/headset_status_standby.png");
+        WriteString(c, Prop_NamedIconPathDeviceAlertLow_String, "{oxrsys}/icons/headset_status_alert_low.png");
+        WriteString(c, Prop_NamedIconPathDeviceStandbyAlert_String, "{oxrsys}/icons/headset_status_standby_alert.png");
         WriteProperty(c, Prop_DisplayFrequency_Float, kRefreshHz, k_unFloatPropertyTag);
         WriteProperty(c, Prop_UserIpdMeters_Float, kIpdMeters, k_unFloatPropertyTag);
         WriteProperty(c, Prop_SecondsFromVsyncToPhotons_Float, 0.0f, k_unFloatPropertyTag);
