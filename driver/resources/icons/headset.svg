@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 32" width="50" height="32">
+  <!-- OXRSys headset status glyph; render_icons.ps1 recolours #FFFFFF and the badge per state. -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M8 11 Q8 7 12 7 H34 Q38 7 38 11 V21 Q38 25 34 25 H27 Q25.5 25 24.6 23.4 L23 20.6 L21.4 23.4 Q20.5 25 19 25 H12 Q8 25 8 21 Z"/>
+    <path d="M8 14 H4.5 M38 14 H41.5"/>
+  </g>
+  <g fill="#FFFFFF">
+    <circle cx="16.5" cy="15.5" r="3.2"/>
+    <circle cx="29.5" cy="15.5" r="3.2"/>
+  </g>
+  <g fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round">
+    <path d="M43.5 21 Q46 24 43.5 27"/>
+    <path d="M46.2 19 Q50 24 46.2 29" opacity="0.6"/>
+  </g>
+  <circle id="badge" cx="42" cy="7" r="0" fill="#EF4444"/>
+</svg>

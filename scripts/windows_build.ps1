@@ -88,6 +88,7 @@ try {
         New-Item -ItemType Directory -Force (Join-Path $driverDir 'bin\win64') | Out-Null
         Copy-Item -Force (Join-Path $build 'driver\oxrsys\driver.vrdrivermanifest') $driverDir
         Copy-Item -Force (Join-Path $build 'driver\oxrsys\bin\win64\driver_oxrsys.dll') (Join-Path $driverDir 'bin\win64')
+        Copy-Item -Force -Recurse (Join-Path $build 'driver\oxrsys\resources') $driverDir
     }
     if ($Register) {
         # The driver is registered through the PC VR runtime's own vrpathreg, found from its paths file;
