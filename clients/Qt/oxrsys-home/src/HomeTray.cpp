@@ -8,7 +8,11 @@
 #include <QAction>
 #include <QApplication>
 #include <QDir>
+#include <QFile>
+#include <QFileDialog>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QIcon>
 #include <QMenu>
 #include <QSettings>
@@ -39,6 +43,39 @@ QString registryValue(const QString& name)
 {
     QSettings key(kOpenXrKey, QSettings::NativeFormat);
     return key.value(name).toString();
+}
+
+QStringList availableRuntimes()
+{
+    QStringList names;
+#if defined(Q_OS_WIN)
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Khronos\\OpenXR\\1\\AvailableRuntimes", 0, KEY_READ, &key) != ERROR_SUCCESS)
+    {
+        return names;
+    }
+    for (DWORD index = 0;; ++index)
+    {
+        wchar_t name[1024] = {};
+        DWORD length = 1024;
+        if (RegEnumValueW(key, index, name, &length, nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS)
+        {
+            break;
+        }
+        names << QString::fromWCharArray(name, static_cast<int>(length));
+    }
+    RegCloseKey(key);
+#endif
+    return names;
+}
+
+QString runtimeName(const QString& manifest)
+{
+    QFile file(manifest);
+    const QString name = file.open(QIODevice::ReadOnly)
+        ? QJsonDocument::fromJson(file.readAll()).object().value("runtime").toObject().value("name").toString()
+        : QString();
+    return name.isEmpty() ? QFileInfo(manifest).completeBaseName() : name;
 }
 
 #if defined(Q_OS_WIN)
@@ -80,9 +117,7 @@ HomeTray::HomeTray(QString runtimeStatusPath, QString logDirectory, std::functio
     status_ = menu_->addAction("Idle");
     status_->setEnabled(false);
     menu_->addSeparator();
-    defaultRuntime_ = menu_->addAction("OXRSys is the default runtime");
-    defaultRuntime_->setCheckable(true);
-    connect(defaultRuntime_, &QAction::triggered, this, &HomeTray::toggleDefaultRuntime);
+    runtimeMenu_ = menu_->addMenu("Default OpenXR runtime");
     connect(menu_->addAction("Open simulator"), &QAction::triggered, this, [openSimulator]() { openSimulator(); });
     connect(menu_->addAction("Open logs"), &QAction::triggered, this,
             [this]() { revealInFileManager(logDirectory_); });
@@ -141,9 +176,7 @@ void HomeTray::refresh()
         icon_->setIcon(QIcon(activity.isStreaming() ? ":/tray/tray_streaming.png" : ":/tray/tray_idle.png"));
     }
 
-    const QString active = QDir::toNativeSeparators(registryValue("ActiveRuntime"));
-    defaultRuntime_->setChecked(active.compare(installedRuntimeManifest(), Qt::CaseInsensitive) == 0);
-    defaultRuntime_->setEnabled(QFileInfo::exists(installedRuntimeManifest()));
+    rebuildRuntimeMenu();
 
     const bool developer = developerMode_->isChecked();
     developerSeparator_->setVisible(developer);
@@ -151,35 +184,71 @@ void HomeTray::refresh()
     openDriverFolder_->setVisible(developer);
 }
 
-void HomeTray::toggleDefaultRuntime(bool makeDefault)
+// Runtimes the desk has shown or the user added: the loader's list, the active and previous ones,
+// ours, and every one remembered, since a vendor may set ActiveRuntime without listing itself.
+void HomeTray::rebuildRuntimeMenu()
+{
+    QSettings settings("OXRSys", "HomeQt");
+    QStringList known = settings.value("tray/knownRuntimes").toStringList();
+    known << availableRuntimes() << registryValue("ActiveRuntime") << registryValue("PreviousActiveRuntime")
+          << installedRuntimeManifest();
+    QStringList runtimes;
+    for (const QString& path : known)
+    {
+        const QString manifest = QDir::toNativeSeparators(path);
+        bool listed = false;
+        for (const QString& existing : runtimes)
+        {
+            listed = listed || existing.compare(manifest, Qt::CaseInsensitive) == 0;
+        }
+        if (!manifest.isEmpty() && !listed && QFileInfo::exists(manifest))
+        {
+            runtimes << manifest;
+        }
+    }
+    settings.setValue("tray/knownRuntimes", runtimes);
+
+    const QString active = QDir::toNativeSeparators(registryValue("ActiveRuntime"));
+    runtimeMenu_->clear();
+    for (const QString& manifest : runtimes)
+    {
+        QAction* item = runtimeMenu_->addAction(runtimeName(manifest));
+        item->setToolTip(manifest);
+        item->setCheckable(true);
+        item->setChecked(manifest.compare(active, Qt::CaseInsensitive) == 0);
+        connect(item, &QAction::triggered, this, [this, manifest]() { makeDefaultRuntime(manifest); });
+    }
+    runtimeMenu_->addSeparator();
+    connect(runtimeMenu_->addAction("Add runtime manifest..."), &QAction::triggered, this, [this]() {
+        const QString picked = QFileDialog::getOpenFileName(nullptr, "OpenXR runtime manifest", QString(), "Runtime manifest (*.json)");
+        if (picked.isEmpty())
+        {
+            return;
+        }
+        QSettings settings("OXRSys", "HomeQt");
+        QStringList known = settings.value("tray/knownRuntimes").toStringList();
+        known << QDir::toNativeSeparators(picked);
+        settings.setValue("tray/knownRuntimes", known);
+        rebuildRuntimeMenu();
+    });
+}
+
+void HomeTray::makeDefaultRuntime(const QString& manifest)
 {
 #if defined(Q_OS_WIN)
     const QString key = "HKLM:\\SOFTWARE\\Khronos\\OpenXR\\1";
-    const QString ours = installedRuntimeManifest();
     const QString active = registryValue("ActiveRuntime");
-    const QString previous = registryValue("PreviousActiveRuntime");
-    QString script;
-    if (makeDefault)
+    QString script = QString("New-Item -Force -Path '%1\\AvailableRuntimes' | Out-Null; "
+                             "Set-ItemProperty -Path '%1\\AvailableRuntimes' -Name '%2' -Value 0 -Type DWord; ")
+                         .arg(key, manifest);
+    if (!active.isEmpty() && active.compare(manifest, Qt::CaseInsensitive) != 0)
     {
-        script = QString("New-Item -Force -Path '%1\\AvailableRuntimes' | Out-Null; "
-                         "Set-ItemProperty -Path '%1\\AvailableRuntimes' -Name '%2' -Value 0 -Type DWord; ")
-                     .arg(key, ours);
-        if (!active.isEmpty() && active.compare(ours, Qt::CaseInsensitive) != 0)
-        {
-            script += QString("Set-ItemProperty -Path '%1' -Name PreviousActiveRuntime -Value '%2'; ").arg(key, active);
-        }
-        script += QString("Set-ItemProperty -Path '%1' -Name ActiveRuntime -Value '%2'").arg(key, ours);
+        script += QString("Set-ItemProperty -Path '%1' -Name PreviousActiveRuntime -Value '%2'; ").arg(key, active);
     }
-    else if (!previous.isEmpty() && previous.compare(ours, Qt::CaseInsensitive) != 0)
-    {
-        script = QString("Set-ItemProperty -Path '%1' -Name ActiveRuntime -Value '%2'").arg(key, previous);
-    }
-    if (!script.isEmpty())
-    {
-        runElevatedPowerShell(script);
-    }
+    script += QString("Set-ItemProperty -Path '%1' -Name ActiveRuntime -Value '%2'").arg(key, manifest);
+    runElevatedPowerShell(script);
 #else
-    Q_UNUSED(makeDefault);
+    Q_UNUSED(manifest);
 #endif
     refresh();
 }
