@@ -29,6 +29,8 @@ struct SimulatorTrackingPose
     // Hands sit relative to the head in its yaw frame, so they follow walking and turning.
     float leftHandOffset[3] = {-0.18f, -0.35f, -0.35f};
     float rightHandOffset[3] = {0.18f, -0.35f, -0.35f};
+    // A hand's laser crosses the gaze at one distance only; this is that distance.
+    float aimDistance = 1.5f;
 };
 
 void advanceSimulatorTracking(SimulatorTrackingPose& pose,

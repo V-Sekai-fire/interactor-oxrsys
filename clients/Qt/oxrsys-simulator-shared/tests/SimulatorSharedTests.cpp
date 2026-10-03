@@ -279,6 +279,7 @@ void testHandsAimAtGaze()
     pose.yaw = 1.2f;
     pose.pitch = -0.4f;
     pose.headPosition[0] = 3.0f;
+    pose.aimDistance = 2.0f;
     TrackingPacket packet = {};
     fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, packet);
     const float* p = packet.rightControllerPos;

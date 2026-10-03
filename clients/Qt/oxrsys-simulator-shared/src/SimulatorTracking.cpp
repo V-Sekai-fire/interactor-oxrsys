@@ -167,9 +167,9 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
     packet.headOrientation[2] = orientation.z;
     packet.headOrientation[3] = orientation.w;
 
-    // Each hand aims at the point 2 m along the gaze, so its laser meets the reticle.
+    // Each hand aims at the point aimDistance along the gaze, where its laser meets the reticle.
     const Vector head = {pose.headPosition[0], pose.headPosition[1], pose.headPosition[2]};
-    const Vector gaze = rotate(orientation, {0.0f, 0.0f, -2.0f});
+    const Vector gaze = rotate(orientation, {0.0f, 0.0f, -pose.aimDistance});
     const Quaternion bodyYaw = axisAngle(0.0f, 1.0f, 0.0f, pose.yaw);
     const auto placeHand = [&](const float* offset, float* position, float* rotation) {
         const Vector local = rotate(bodyYaw, {offset[0], offset[1], offset[2]});
