@@ -437,16 +437,23 @@ SimulatorWidget::SimulatorWidget(QWidget* parent)
     trackingTimer_->start();
     setState(State::Disconnected, "Disconnected");
 
-    // Searches at start and connects to the first runtime it hears unless
-    // OXRSYS_SIMULATOR_AUTOCONNECT=0; OXRSYS_SIMULATOR_SNAPSHOT=<file.png> saves the 90th decoded
-    // frame there.
-    autoConnect_ = !qEnvironmentVariableIsSet("OXRSYS_SIMULATOR_AUTOCONNECT") ||
-                   qEnvironmentVariableIntValue("OXRSYS_SIMULATOR_AUTOCONNECT") != 0;
-    snapshotPath_ = qEnvironmentVariable("OXRSYS_SIMULATOR_SNAPSHOT");
-    if (autoConnect_)
-    {
-        QTimer::singleShot(0, this, &SimulatorWidget::startDiscovery);
-    }
+    // Searches once the event loop starts, so a caller can turn auto-connect off first.
+    QTimer::singleShot(0, this, [this]() {
+        if (autoConnect_)
+        {
+            startDiscovery();
+        }
+    });
+}
+
+void SimulatorWidget::setAutoConnect(bool enabled)
+{
+    autoConnect_ = enabled;
+}
+
+void SimulatorWidget::setSnapshotPath(const QString& path)
+{
+    snapshotPath_ = path;
 }
 
 SimulatorWidget::~SimulatorWidget()
