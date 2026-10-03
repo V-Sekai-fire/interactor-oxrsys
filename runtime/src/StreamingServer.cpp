@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
 #include "StreamingServer.h"
-#include "ClientKeepAlive.h"
 #include "Config.h"
 #include "RuntimeSockets.h"
 #include "RuntimeStatus.h"
@@ -896,8 +895,7 @@ void StreamingServer::ControlThread()
 
     while (running_.load())
     {
-        CheckClientKeepAlive();
-        oxrsys::runtime_socket::SetReceiveTimeout(controlSocket_, 0, 250000);
+        oxrsys::runtime_socket::SetReceiveTimeout(controlSocket_, 1, 0);
 
         sockaddr_in clientAddr = {};
         oxrsys::runtime_socket::SocketLength addrLen = sizeof(clientAddr);
@@ -926,11 +924,7 @@ void StreamingServer::ControlThread()
         }
         else if (type == static_cast<uint8_t>(oxr::protocol::MessageType::ServerDisconnect))
         {
-            // A replaced client's late Disconnect must not drop its successor.
-            if (IsCurrentClientAddress(clientAddr))
-            {
-                HandleClientDisconnect("client sent Disconnect");
-            }
+            HandleClientDisconnect();
         }
         else
         {
@@ -1543,24 +1537,6 @@ void StreamingServer::HandleClientConnect(const oxr::protocol::ClientConnect& cl
     std::string clientName(clientConnect.deviceName,
         BoundedStringLength(clientConnect.deviceName, sizeof(clientConnect.deviceName)));
 
-    if (state_.load() == State::Connected)
-    {
-        std::string previousName;
-        std::string previousIp;
-        uint16_t previousPort = 0;
-        {
-            std::lock_guard<std::mutex> lock(clientMutex_);
-            previousName = clientName_;
-            previousIp = clientIp_;
-            previousPort = clientPort_;
-        }
-        spdlog::info("StreamingServer: ClientConnect from '{}' ({}:{}) replaces '{}' ({}:{})",
-                     clientName, ipStr, ntohs(clientAddr.sin_port),
-                     previousName, previousIp, previousPort);
-        HandleClientDisconnect("replaced by a newer ClientConnect");
-    }
-
-    clientConnectedNs_.store(SteadyClockNowNs());
     {
         std::lock_guard<std::mutex> lock(clientMutex_);
         clientIp_ = ipStr;
@@ -1703,7 +1679,6 @@ void StreamingServer::HandleUsbClientConnect(const oxr::protocol::ClientConnect&
 {
     std::string clientName(clientConnect.deviceName,
         BoundedStringLength(clientConnect.deviceName, sizeof(clientConnect.deviceName)));
-    clientConnectedNs_.store(SteadyClockNowNs());
     {
         std::lock_guard<std::mutex> lock(clientMutex_);
         clientIp_ = "127.0.0.1";
@@ -1843,34 +1818,7 @@ void StreamingServer::HandleUsbClientConnect(const oxr::protocol::ClientConnect&
     }
 }
 
-bool StreamingServer::IsCurrentClientAddress(const sockaddr_in& addr) const
-{
-    char ipStr[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &addr.sin_addr, ipStr, sizeof(ipStr));
-    std::lock_guard<std::mutex> lock(clientMutex_);
-    return !clientUsesUsbAdb_.load() && clientIp_ == ipStr && clientPort_ == ntohs(addr.sin_port);
-}
-
-void StreamingServer::CheckClientKeepAlive()
-{
-    if (state_.load() != State::Connected || !trackingReceiver_)
-    {
-        return;
-    }
-    const int64_t nowNs = SteadyClockNowNs();
-    const int64_t connectedNs = clientConnectedNs_.load();
-    const int64_t lastPacketNs = trackingReceiver_->GetLastPacketReceiveNs();
-    if (!oxrsys::client_keepalive::IsSilent(connectedNs, lastPacketNs, nowNs))
-    {
-        return;
-    }
-    spdlog::warn("StreamingServer: dropping client '{}': no tracking packet for {:.2f} s",
-                 GetClientName(),
-                 static_cast<double>(oxrsys::client_keepalive::SilenceNs(connectedNs, lastPacketNs, nowNs)) / 1e9);
-    HandleClientDisconnect("tracking keep-alive timeout");
-}
-
-void StreamingServer::HandleClientDisconnect(const char* reason)
+void StreamingServer::HandleClientDisconnect()
 {
     std::lock_guard<std::mutex> disconnectLock(disconnectMutex_);
     if (!running_.load())
@@ -1963,7 +1911,7 @@ void StreamingServer::HandleClientDisconnect(const char* reason)
     }
 
     RuntimeStatus::SetIdle();
-    spdlog::info("StreamingServer: Client disconnected ({}), resuming broadcast", reason);
+    spdlog::info("StreamingServer: Client disconnected, resuming broadcast");
 }
 
 void StreamingServer::HandleLatencyReport(const oxr::protocol::LatencyReport& report)

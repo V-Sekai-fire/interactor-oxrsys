@@ -517,7 +517,7 @@ void SimulatorWidget::disconnectFromRuntime()
 {
     if (state_ == State::Streaming)
     {
-        // Frees the runtime's client slot now instead of after its keep-alive timeout.
+        // Frees the runtime's client slot and resumes its announce, as the headset client does on leaving.
         const oxr::protocol::MessageType disconnect = oxr::protocol::MessageType::ServerDisconnect;
         controlSocket_->writeDatagram(reinterpret_cast<const char*>(&disconnect),
                                       static_cast<qint64>(sizeof(disconnect)),
