@@ -9,6 +9,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <iterator>
+#include <utility>
 
 namespace
 {
@@ -68,28 +69,10 @@ void advanceSimulatorTracking(SimulatorTrackingPose& pose,
                               float deltaTime)
 {
     constexpr float MouseSensitivity = 0.003f;
-    constexpr float ArrowSensitivity = 2.0f;
     constexpr float MoveSpeed = 2.0f;
 
     pose.yaw -= static_cast<float>(mouseDelta.x()) * MouseSensitivity;
     pose.pitch += static_cast<float>(mouseDelta.y()) * MouseSensitivity;
-
-    if (pressedKeys.contains(Qt::Key_Left))
-    {
-        pose.yaw += ArrowSensitivity * deltaTime;
-    }
-    if (pressedKeys.contains(Qt::Key_Right))
-    {
-        pose.yaw -= ArrowSensitivity * deltaTime;
-    }
-    if (pressedKeys.contains(Qt::Key_Up))
-    {
-        pose.pitch += ArrowSensitivity * deltaTime;
-    }
-    if (pressedKeys.contains(Qt::Key_Down))
-    {
-        pose.pitch -= ArrowSensitivity * deltaTime;
-    }
     pose.pitch = std::clamp(pose.pitch, -1.5f, 1.5f);
 
     if (pressedKeys.contains(Qt::Key_E))
@@ -199,6 +182,41 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
         packet.buttonState |= oxr::protocol::BUTTON_RIGHT_GRIP;
         packet.rightGrip = 1.0f;
     }
+    if (pressedKeys.contains(Qt::Key_T))
+    {
+        packet.buttonState |= oxr::protocol::BUTTON_LEFT_TRIGGER;
+        packet.leftTrigger = 1.0f;
+    }
+    if (pressedKeys.contains(Qt::Key_H))
+    {
+        packet.buttonState |= oxr::protocol::BUTTON_RIGHT_TRIGGER;
+        packet.rightTrigger = 1.0f;
+    }
+
+    const std::pair<int, uint32_t> buttons[] = {
+        {Qt::Key_1, oxr::protocol::BUTTON_X},
+        {Qt::Key_2, oxr::protocol::BUTTON_Y},
+        {Qt::Key_3, oxr::protocol::BUTTON_A},
+        {Qt::Key_4, oxr::protocol::BUTTON_B},
+        {Qt::Key_M, oxr::protocol::BUTTON_MENU},
+        {Qt::Key_C, oxr::protocol::BUTTON_LEFT_THUMBSTICK},
+        {Qt::Key_N, oxr::protocol::BUTTON_RIGHT_THUMBSTICK},
+    };
+    for (const auto& [key, bit] : buttons)
+    {
+        if (pressedKeys.contains(key))
+        {
+            packet.buttonState |= bit;
+        }
+    }
+
+    const auto axis = [&pressedKeys](int negative, int positive) {
+        return (pressedKeys.contains(positive) ? 1.0f : 0.0f) - (pressedKeys.contains(negative) ? 1.0f : 0.0f);
+    };
+    packet.leftThumbstick[0] = axis(Qt::Key_J, Qt::Key_L);
+    packet.leftThumbstick[1] = axis(Qt::Key_K, Qt::Key_I);
+    packet.rightThumbstick[0] = axis(Qt::Key_Left, Qt::Key_Right);
+    packet.rightThumbstick[1] = axis(Qt::Key_Down, Qt::Key_Up);
     packet.ipd = 0.064f;
 
     const float clampedFovDegrees = std::clamp(verticalFovDegrees, 60.0f, 150.0f);

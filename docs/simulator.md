@@ -107,10 +107,22 @@ server has been discovered, then sends both angles in each tracking packet.
 | `Z Q S D` or `W A S D` | Move head |
 | `Left Shift` + movement | Move left controller |
 | `Right Shift` + movement | Move right controller |
-| Arrow keys | Alternate head look |
 | `R / E` | Roll head |
-| `F / G` | Left or right grip |
 | `Escape` | Release mouse capture |
+
+The controllers present as `/interaction_profiles/oculus/touch_controller`, and every input
+on that profile has a key:
+
+| Input | Touch path |
+| --- | --- |
+| `T / H` | Left or right `trigger` |
+| `F / G` | Left or right `squeeze` |
+| `1 / 2` | Left `x/click` or `y/click` |
+| `3 / 4` | Right `a/click` or `b/click` |
+| `M` | Left `menu/click` |
+| `I J K L` | Left `thumbstick` |
+| Arrow keys | Right `thumbstick` |
+| `C / N` | Left or right `thumbstick/click` |
 
 The Qt simulator window exposes `Vertical FOV` next to the runtime/tracking
 panels. It uses the same `TrackingPacket.eyeFov` path as the Apple simulator.
