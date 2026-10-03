@@ -636,7 +636,8 @@ public:
         WriteString(c, Prop_SerialNumber_String, left_ ? "OXRSYS-LEFT-0" : "OXRSYS-RIGHT-0");
         WriteString(c, Prop_ManufacturerName_String, "OXRSys");
         WriteString(c, Prop_ControllerType_String, "oxrsys_controller");
-        WriteString(c, Prop_RenderModelName_String, "{oxrsys}oxrsys_controller");
+        // Hidden until physical tracker support lands; oxrsys_controller is the model to restore.
+        WriteString(c, Prop_RenderModelName_String, "{oxrsys}oxrsys_hidden");
         WriteString(c, Prop_InputProfilePath_String, "{oxrsys}/input/oxrsys_controller_profile.json");
         WriteProperty(c, Prop_ControllerRoleHint_Int32,
                       static_cast<int32_t>(left_ ? TrackedControllerRole_LeftHand : TrackedControllerRole_RightHand),
