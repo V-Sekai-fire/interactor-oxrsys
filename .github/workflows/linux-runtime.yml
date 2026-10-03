@@ -28,8 +28,10 @@ jobs:
       - name: Configure
         run: cmake --preset linux-native -DOXRSYS_BUILD_QT_FRONTENDS=OFF
       - name: Build
-        run: cmake --build build/linux-native --target oxrsys_runtime oxrsys_cineform_tests
+        run: cmake --build build/linux-native --target oxrsys_runtime oxrsys_cineform_tests oxrsys_pyrowave_tests
       - name: CineForm round trip
         run: ctest --test-dir build/linux-native -R '^oxrsys_cineform_tests$' --output-on-failure -V
+      - name: PyroWave round trip, unchecked without a GPU
+        run: echo "UNCHECKED 1 - oxrsys_pyrowave_tests needs a Vulkan GPU, which this runner lacks, and PyroWave refuses software rasterizers; it runs on the Windows desk"
       - name: No FFmpeg in the runtime
         run: scripts/linux_check_runtime_linkage.sh build/linux-native/runtime/liboxrsys-runtime.so --self-test
