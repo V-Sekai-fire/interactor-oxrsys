@@ -617,8 +617,8 @@ private:
     std::atomic<int64_t> nextVsyncNs_{0};
 };
 
-// A hand that SteamVR sees only while its grip is held, so it draws that hand's laser; released, it
-// reports disconnected and the head pose is the pointer again.
+// A hand that SteamVR sees only while its grip or trigger is held, so it draws that hand's laser;
+// released, it reports disconnected and the head pose is the pointer again.
 class Controller final : public ITrackedDeviceServerDriver
 {
 public:
@@ -681,8 +681,9 @@ public:
         pose_.qRotation.z = rotation[2];
         pose_.qRotation.w = rotation[3];
         pose_.result = TrackingResult_Running_OK;
-        pose_.poseIsValid = grip > 0.5f;
-        pose_.deviceIsConnected = grip > 0.5f;
+        const bool present = grip > 0.5f || trigger > 0.5f;
+        pose_.poseIsValid = present;
+        pose_.deviceIsConnected = present;
         gHost->TrackedDevicePoseUpdated(id_, pose_, sizeof(pose_));
         if (gInput != nullptr)
         {
