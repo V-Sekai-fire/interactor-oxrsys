@@ -19,3 +19,4 @@ license: MPL-2.0
 contents:
   - src: ${OXRSYS_STAGE}/opt/oxrsys
     dst: /opt/oxrsys
+    expand: true
