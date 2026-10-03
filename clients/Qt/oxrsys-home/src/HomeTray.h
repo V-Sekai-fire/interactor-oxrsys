@@ -28,6 +28,7 @@ private:
     void rebuildRuntimeMenu();
     void makeDefaultRuntime(const QString& manifest);
     void unbind();
+    void uninstall();
 
     QString runtimeStatusPath_;
     QString logDirectory_;

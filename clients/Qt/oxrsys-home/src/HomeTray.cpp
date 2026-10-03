@@ -18,6 +18,7 @@
 #include <QIcon>
 #include <QJsonArray>
 #include <QMenu>
+#include <QMessageBox>
 #include <QProcess>
 #include <QSettings>
 #include <QSystemTrayIcon>
@@ -25,6 +26,7 @@
 
 #if defined(Q_OS_WIN)
 #include <windows.h>
+#include <appmodel.h>
 #include <shellapi.h>
 #endif
 
@@ -33,9 +35,39 @@ namespace
 
 const char* const kOpenXrKey = "HKEY_LOCAL_MACHINE\\SOFTWARE\\Khronos\\OpenXR\\1";
 
+// The running package's full name, empty for a development build outside a package.
+QString packageFullName()
+{
+#if defined(Q_OS_WIN)
+    wchar_t name[PACKAGE_FULL_NAME_MAX_LENGTH + 1] = {};
+    UINT32 length = PACKAGE_FULL_NAME_MAX_LENGTH + 1;
+    if (GetCurrentPackageFullName(&length, name) == ERROR_SUCCESS)
+    {
+        return QString::fromWCharArray(name);
+    }
+#endif
+    return QString();
+}
+
+// A package copies the runtime and driver into its own LocalCache, a real folder other processes can
+// load from that Windows deletes with the package however it is removed; a development build keeps the
+// folder windows_build.ps1 -Install uses.
+QString installBase()
+{
+#if defined(Q_OS_WIN)
+    wchar_t family[PACKAGE_FAMILY_NAME_MAX_LENGTH + 1] = {};
+    UINT32 length = PACKAGE_FAMILY_NAME_MAX_LENGTH + 1;
+    if (GetCurrentPackageFamilyName(&length, family) == ERROR_SUCCESS)
+    {
+        return qEnvironmentVariable("LOCALAPPDATA") + "/Packages/" + QString::fromWCharArray(family) + "/LocalCache/OXRSys";
+    }
+#endif
+    return qEnvironmentVariable("LOCALAPPDATA") + "/OXRSys";
+}
+
 QString installedRuntimeManifest()
 {
-    return QDir::toNativeSeparators(qEnvironmentVariable("LOCALAPPDATA") + "/OXRSys/runtime/oxrsys-runtime.json");
+    return QDir::toNativeSeparators(installBase() + "/runtime/oxrsys-runtime.json");
 }
 
 // Copies a packaged tree into the per-user install, file by file, skipping files already equal in
@@ -59,7 +91,7 @@ void copyTree(const QString& from, const QString& to)
 }
 
 // An MSIX ships the runtime and driver beside Home, but Windows will not load a packaged DLL into
-// another app's process, so they are copied to the same per-user folder windows_build.ps1 -Install uses.
+// another app's process, so they are copied out to installBase().
 void installPackagedFiles()
 {
     const QString package = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/..");
@@ -67,14 +99,13 @@ void installPackagedFiles()
     {
         return;
     }
-    const QString base = qEnvironmentVariable("LOCALAPPDATA") + "/OXRSys";
-    copyTree(package + "/runtime", base + "/runtime");
-    copyTree(package + "/driver/oxrsys", base + "/driver/oxrsys");
+    copyTree(package + "/runtime", installBase() + "/runtime");
+    copyTree(package + "/driver/oxrsys", installBase() + "/driver/oxrsys");
 }
 
 QString installedDriverFolder()
 {
-    return QDir::toNativeSeparators(qEnvironmentVariable("LOCALAPPDATA") + "/OXRSys/driver/oxrsys");
+    return QDir::toNativeSeparators(installBase() + "/driver/oxrsys");
 }
 
 QJsonObject readJson(const QString& path)
@@ -117,14 +148,23 @@ void registerSteamVrDriver()
     {
         return;
     }
+    bool registered = false;
     for (const QJsonValue& driver : openVrPaths().value("external_drivers").toArray())
     {
-        if (QDir::toNativeSeparators(driver.toString()).compare(installedDriverFolder(), Qt::CaseInsensitive) == 0)
+        const QString folder = QDir::toNativeSeparators(driver.toString());
+        if (folder.compare(installedDriverFolder(), Qt::CaseInsensitive) == 0)
         {
-            return;
+            registered = true;
+        }
+        else if (QFileInfo(folder).fileName().compare("oxrsys", Qt::CaseInsensitive) == 0)
+        {
+            runVrPathReg("removedriver", folder);
         }
     }
-    runVrPathReg("adddriver", installedDriverFolder());
+    if (!registered)
+    {
+        runVrPathReg("adddriver", installedDriverFolder());
+    }
 }
 
 // Removes every registered folder of this driver, including ones a development build registered.
@@ -258,6 +298,9 @@ HomeTray::HomeTray(QString runtimeStatusPath, QString logDirectory, std::functio
     QAction* unbindAction = menu_->addAction("Unbind OXRSys");
     unbindAction->setToolTip("Hand the OpenXR default and the SteamVR headset back, and stop registering the driver");
     connect(unbindAction, &QAction::triggered, this, &HomeTray::unbind);
+    QAction* uninstallAction = menu_->addAction("Uninstall OXRSys...");
+    uninstallAction->setVisible(!packageFullName().isEmpty());
+    connect(uninstallAction, &QAction::triggered, this, &HomeTray::uninstall);
     connect(menu_->addAction("Open simulator"), &QAction::triggered, this, [openSimulator]() { openSimulator(); });
     connect(menu_->addAction("Open logs"), &QAction::triggered, this,
             [this]() { revealInFileManager(logDirectory_); });
@@ -417,11 +460,16 @@ void HomeTray::unbind()
     const QString previous = QDir::toNativeSeparators(registryValue("PreviousActiveRuntime"));
     const bool listed = availableRuntimes().contains(ours, Qt::CaseInsensitive);
     const bool activeIsOurs = active.compare(ours, Qt::CaseInsensitive) == 0;
-    if (activeIsOurs || listed)
+    const bool previousIsOurs = previous.compare(ours, Qt::CaseInsensitive) == 0;
+    if (activeIsOurs || listed || previousIsOurs)
     {
         const QString key = "HKLM:\\SOFTWARE\\Khronos\\OpenXR\\1";
         QString script = QString("Remove-ItemProperty -Path '%1\\AvailableRuntimes' -Name '%2' -ErrorAction SilentlyContinue; ")
                              .arg(key, ours);
+        if (previousIsOurs)
+        {
+            script += QString("Remove-ItemProperty -Path '%1' -Name PreviousActiveRuntime -ErrorAction SilentlyContinue; ").arg(key);
+        }
         const bool restore = activeIsOurs && !previous.isEmpty() &&
                              previous.compare(ours, Qt::CaseInsensitive) != 0 && QFileInfo::exists(previous);
         if (restore)
@@ -450,4 +498,23 @@ void HomeTray::unbind()
                                .arg(drivers));
     }
     refresh();
+}
+
+// A package cannot run code when Windows removes it, so the tray unbinds first and then removes its
+// own package; the copied runtime and driver go with the package's LocalCache.
+void HomeTray::uninstall()
+{
+    const QString package = packageFullName();
+    if (package.isEmpty() ||
+        QMessageBox::question(nullptr, "Uninstall OXRSys",
+                              "Unbind OXRSys from OpenXR and SteamVR, then remove OXRSys Home and the simulator?") != QMessageBox::Yes)
+    {
+        return;
+    }
+    unbind();
+    QDir(qEnvironmentVariable("LOCALAPPDATA") + "/OXRSys").removeRecursively();
+    QSettings("OXRSys", "HomeQt").clear();
+    const QString script = QString("Start-Sleep -Seconds 2; Remove-AppxPackage -Package '%1'").arg(package);
+    QProcess::startDetached("powershell.exe", {"-NoProfile", "-WindowStyle", "Hidden", "-Command", script});
+    qApp->quit();
 }
