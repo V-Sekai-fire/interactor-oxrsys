@@ -25,7 +25,10 @@ jobs:
           cache: true
       - name: Build
         shell: pwsh
-        run: scripts/windows_build.ps1 -BuildType Release
+        # No Vulkan SDK on the runner; FindVulkan takes pixi's headers and loader instead.
+        run: |
+          $env:VULKAN_SDK = "$PWD\.pixi\envs\default\Library"
+          scripts/windows_build.ps1 -BuildType Release
       - name: PyroWave round trip, unchecked without a GPU
         run: echo "UNCHECKED 1 - oxrsys_pyrowave_tests needs a Vulkan GPU, which this runner lacks; it runs on the Windows desk"
       - name: Pack and test-sign the MSIX
