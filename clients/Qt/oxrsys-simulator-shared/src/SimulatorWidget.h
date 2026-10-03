@@ -150,7 +150,7 @@ private:
 #if OXRSYS_QT_SIMULATOR_HAS_NVDEC
     NvdecDecoder nvdec_;
 #endif
-    bool autoConnect_ = false;
+    bool autoConnect_ = true;
     QString snapshotPath_;
     QElapsedTimer poseClock_;
     QSet<int> pressedKeys_;

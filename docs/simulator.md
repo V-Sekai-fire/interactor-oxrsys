@@ -37,6 +37,9 @@ The viewer connects to the runtime as a streaming client, using the same UDP pro
 - Captures keyboard and mouse input and sends simulated tracking data to the runtime
 - Displays a single-eye preview across the full screen
 
+The Qt simulator searches at start and connects to the first runtime it hears;
+`OXRSYS_SIMULATOR_AUTOCONNECT=0` leaves it disconnected until Search is clicked.
+
 The Qt simulator uses the same UDP discovery, video, control, and tracking ports. With FFmpeg
 development libraries available at build time, the Qt widget decodes the H.265 stream into its
 preview surface. That surface is also the interaction target for click, drag, scroll, keyboard focus,
@@ -99,7 +102,7 @@ server has been discovered, then sends both angles in each tracking packet.
 | Input | Action |
 | --- | --- |
 | Right mouse button in the preview | Capture or release mouse look |
-| Mouse move while captured, or left-drag | Head look |
+| Mouse move while captured, or left-drag | Head look, vertical inverted: mouse down looks up |
 | Mouse wheel | Move forward or backward |
 | `Z Q S D` or `W A S D` | Move head |
 | `Left Shift` + movement | Move left controller |
