@@ -13,6 +13,7 @@
 #include <QMenu>
 #include <QSettings>
 #include <QSystemTrayIcon>
+#include <QTimer>
 
 #if defined(Q_OS_WIN)
 #include <windows.h>
@@ -105,7 +106,7 @@ HomeTray::HomeTray(QString runtimeStatusPath, QString logDirectory, std::functio
     connect(menu_->addAction("Quit"), &QAction::triggered, qApp, &QApplication::quit);
     connect(menu_, &QMenu::aboutToShow, this, &HomeTray::refresh);
 
-    icon_ = new QSystemTrayIcon(QIcon(":/tray/headset.png"), this);
+    icon_ = new QSystemTrayIcon(QIcon(":/tray/tray_idle.png"), this);
     icon_->setContextMenu(menu_);
     connect(icon_, &QSystemTrayIcon::activated, this, [showHome](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::DoubleClick)
@@ -115,6 +116,11 @@ HomeTray::HomeTray(QString runtimeStatusPath, QString logDirectory, std::functio
     });
     refresh();
     icon_->show();
+
+    // Keeps the icon colour and tooltip following the stream between menu opens.
+    QTimer* poll = new QTimer(this);
+    connect(poll, &QTimer::timeout, this, &HomeTray::refresh);
+    poll->start(2000);
 }
 
 bool HomeTray::isVisible() const
@@ -132,6 +138,7 @@ void HomeTray::refresh()
     if (icon_ != nullptr)
     {
         icon_->setToolTip("OXRSys: " + status);
+        icon_->setIcon(QIcon(activity.isStreaming() ? ":/tray/tray_streaming.png" : ":/tray/tray_idle.png"));
     }
 
     const QString active = QDir::toNativeSeparators(registryValue("ActiveRuntime"));
