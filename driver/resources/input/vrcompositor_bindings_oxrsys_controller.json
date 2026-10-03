@@ -7,78 +7,24 @@
   "bindings": {
     "/actions/lasermouse": {
       "poses": [
-        {
-          "output": "/actions/lasermouse/in/pointer",
-          "path": "/user/hand/left/pose/tip"
-        },
-        {
-          "output": "/actions/lasermouse/in/pointer",
-          "path": "/user/hand/right/pose/tip"
-        }
+        { "output": "/actions/lasermouse/in/pointer", "path": "/user/hand/left/pose/raw" },
+        { "output": "/actions/lasermouse/in/pointer", "path": "/user/hand/right/pose/raw" }
       ],
       "sources": [
-        {
-          "mode": "button",
-          "path": "/user/hand/left/input/trigger",
-          "inputs": {
-            "click": {
-              "output": "/actions/lasermouse/in/leftclick"
-            }
-          }
-        },
-        {
-          "mode": "button",
-          "path": "/user/hand/right/input/trigger",
-          "inputs": {
-            "click": {
-              "output": "/actions/lasermouse/in/leftclick"
-            }
-          }
-        }
+        { "mode": "button", "path": "/user/hand/left/input/trigger", "inputs": { "click": { "output": "/actions/lasermouse/in/leftclick" } } },
+        { "mode": "button", "path": "/user/hand/right/input/trigger", "inputs": { "click": { "output": "/actions/lasermouse/in/leftclick" } } }
       ]
     },
     "/actions/lasermouse_secondary": {
       "sources": [
-        {
-          "mode": "trigger",
-          "path": "/user/hand/left/input/grip",
-          "inputs": {
-            "click": {
-              "output": "/actions/lasermouse_secondary/in/switchlaserhand"
-            }
-          }
-        },
-        {
-          "mode": "trigger",
-          "path": "/user/hand/right/input/grip",
-          "inputs": {
-            "click": {
-              "output": "/actions/lasermouse_secondary/in/switchlaserhand"
-            }
-          }
-        }
+        { "mode": "trigger", "path": "/user/hand/left/input/grip", "inputs": { "click": { "output": "/actions/lasermouse_secondary/in/switchlaserhand" } } },
+        { "mode": "trigger", "path": "/user/hand/right/input/grip", "inputs": { "click": { "output": "/actions/lasermouse_secondary/in/switchlaserhand" } } }
       ]
     },
     "/actions/system": {
       "sources": [
-        {
-          "mode": "button",
-          "path": "/user/hand/left/input/system",
-          "inputs": {
-            "click": {
-              "output": "/actions/system/in/ToggleDashboard"
-            }
-          }
-        },
-        {
-          "mode": "button",
-          "path": "/user/hand/right/input/system",
-          "inputs": {
-            "click": {
-              "output": "/actions/system/in/ToggleDashboard"
-            }
-          }
-        }
+        { "mode": "button", "path": "/user/hand/left/input/system", "inputs": { "click": { "output": "/actions/system/in/ToggleDashboard" } } },
+        { "mode": "button", "path": "/user/hand/right/input/system", "inputs": { "click": { "output": "/actions/system/in/ToggleDashboard" } } }
       ]
     }
   }

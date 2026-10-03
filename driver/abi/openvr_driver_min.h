@@ -140,14 +140,9 @@ public:
     virtual EVRInputError UpdateBooleanComponent(VRInputComponentHandle_t ulComponent, bool bNewValue, double fTimeOffset) = 0;
     virtual EVRInputError CreateScalarComponent(PropertyContainerHandle_t ulContainer, const char *pchName, VRInputComponentHandle_t *pHandle, EVRScalarType eType, EVRScalarUnits eUnits) = 0;
     virtual EVRInputError UpdateScalarComponent(VRInputComponentHandle_t ulComponent, float fNewValue, double fTimeOffset) = 0;
-    virtual void Pad4_CreateHapticComponent() = 0;
-    virtual void Pad5_CreateSkeletonComponent() = 0;
-    virtual void Pad6_UpdateSkeletonComponent() = 0;
-    virtual EVRInputError CreatePoseComponent(PropertyContainerHandle_t ulContainer, const char *pchName, VRInputComponentHandle_t *pHandle) = 0;
-    virtual EVRInputError UpdatePoseComponent(VRInputComponentHandle_t ulComponent, const HmdMatrix34_t *pMatPoseOffset, double fTimeOffset) = 0;
 };
 inline constexpr char kIVRDriverInput_Version[] = "IVRDriverInput_004";
-inline constexpr uint32_t kIVRDriverInput_SlotCount = 9;
+inline constexpr uint32_t kIVRDriverInput_SlotCount = 4;
 
 struct SlotProbe
 {
@@ -213,11 +208,6 @@ inline const SlotProbe kSlotProbes[] = {
     {"IVRDriverInput", "UpdateBooleanComponent", 1, [](void *o) { static_cast<IVRDriverInput *>(o)->UpdateBooleanComponent({}, {}, {}); }},
     {"IVRDriverInput", "CreateScalarComponent", 2, [](void *o) { static_cast<IVRDriverInput *>(o)->CreateScalarComponent({}, {}, {}, {}, {}); }},
     {"IVRDriverInput", "UpdateScalarComponent", 3, [](void *o) { static_cast<IVRDriverInput *>(o)->UpdateScalarComponent({}, {}, {}); }},
-    {"IVRDriverInput", "Pad4_CreateHapticComponent", 4, [](void *o) { static_cast<IVRDriverInput *>(o)->Pad4_CreateHapticComponent(); }},
-    {"IVRDriverInput", "Pad5_CreateSkeletonComponent", 5, [](void *o) { static_cast<IVRDriverInput *>(o)->Pad5_CreateSkeletonComponent(); }},
-    {"IVRDriverInput", "Pad6_UpdateSkeletonComponent", 6, [](void *o) { static_cast<IVRDriverInput *>(o)->Pad6_UpdateSkeletonComponent(); }},
-    {"IVRDriverInput", "CreatePoseComponent", 7, [](void *o) { static_cast<IVRDriverInput *>(o)->CreatePoseComponent({}, {}, {}); }},
-    {"IVRDriverInput", "UpdatePoseComponent", 8, [](void *o) { static_cast<IVRDriverInput *>(o)->UpdatePoseComponent({}, {}, {}); }},
 };
 
 } // namespace oxrvr

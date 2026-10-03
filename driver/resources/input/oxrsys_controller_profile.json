@@ -3,31 +3,12 @@
   "controller_type": "oxrsys_controller",
   "input_bindingui_mode": "controller_handed",
   "input_source": {
-    "/input/trigger": {
-      "type": "trigger",
-      "click": true,
-      "value": true
-    },
-    "/input/grip": {
-      "type": "trigger",
-      "click": true,
-      "value": true
-    },
-    "/input/system": {
-      "type": "button",
-      "click": true
-    },
-    "/pose/raw": {
-      "type": "pose"
-    },
-    "/pose/tip": {
-      "type": "pose"
-    }
+    "/input/trigger": { "type": "trigger", "click": true, "value": true },
+    "/input/grip": { "type": "trigger", "click": true, "value": true },
+    "/input/system": { "type": "button", "click": true },
+    "/pose/raw": { "type": "pose" }
   },
   "default_bindings": [
-    {
-      "app_key": "openvr.component.vrcompositor",
-      "binding_url": "vrcompositor_bindings_oxrsys_controller.json"
-    }
+    { "app_key": "openvr.component.vrcompositor", "binding_url": "vrcompositor_bindings_oxrsys_controller.json" }
   ]
 }
