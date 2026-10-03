@@ -11,7 +11,7 @@ class QAction;
 class QMenu;
 class QSystemTrayIcon;
 
-// The notification-area item: stream status, the default OpenXR runtime toggle, the simulator,
+// The notification-area item: stream status, the default OpenXR runtime picker, the simulator,
 // the logs, and developer items behind a persisted developer-mode toggle.
 class HomeTray final : public QObject
 {
@@ -25,14 +25,15 @@ public:
 
 private:
     void refresh();
-    void toggleDefaultRuntime(bool makeDefault);
+    void rebuildRuntimeMenu();
+    void makeDefaultRuntime(const QString& manifest);
 
     QString runtimeStatusPath_;
     QString logDirectory_;
     QSystemTrayIcon* icon_ = nullptr;
     QMenu* menu_ = nullptr;
     QAction* status_ = nullptr;
-    QAction* defaultRuntime_ = nullptr;
+    QMenu* runtimeMenu_ = nullptr;
     QAction* developerMode_ = nullptr;
     QAction* developerSeparator_ = nullptr;
     QAction* openRuntimeFolder_ = nullptr;
