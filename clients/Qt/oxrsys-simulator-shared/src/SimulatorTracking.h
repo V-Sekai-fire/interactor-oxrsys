@@ -27,11 +27,11 @@ struct SimulatorTrackingPose
     float roll = 0.0f;
     float headPosition[3] = {0.0f, 1.6f, 0.0f};
     // Hands rest at the sides of the body, relative to the head in its yaw frame, so they follow
-    // walking and turning. While pointing, arm IK raises the right, dominant hand from its shoulder.
+    // walking and turning. While pointing, the right, dominant hand rises to just under the line of sight.
     float leftHandOffset[3] = {-0.22f, -0.72f, -0.05f};
     float rightHandOffset[3] = {0.22f, -0.72f, -0.05f};
-    float rightShoulder[3] = {0.18f, -0.22f, 0.04f};
     float pointingSeconds = 0.0f;
+    float pointingAge = 0.0f;
 };
 
 void advanceSimulatorTracking(SimulatorTrackingPose& pose,

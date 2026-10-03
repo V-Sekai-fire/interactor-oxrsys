@@ -87,9 +87,14 @@ void advanceSimulatorTracking(SimulatorTrackingPose& pose,
     // Pressing the trigger or the system button raises the right hand to point; it lowers 1.5 s later.
     if (containsAny(pressedKeys, {TriggerMouseKey, Qt::Key_H, Qt::Key_M}))
     {
+        if (pose.pointingSeconds <= 0.0f)
+        {
+            pose.pointingAge = 0.0f;
+        }
         pose.pointingSeconds = 1.5f;
     }
     pose.pointingSeconds = std::max(0.0f, pose.pointingSeconds - deltaTime);
+    pose.pointingAge += deltaTime;
 
     pose.yaw -= static_cast<float>(mouseDelta.x()) * MouseSensitivity;
     pose.pitch -= static_cast<float>(mouseDelta.y()) * MouseSensitivity;
@@ -197,22 +202,16 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
     }
     else
     {
-        // Arm IK sights the right hand along the gaze, as a person points at what they look at: the hand
-        // sits on the line of sight at the reach the shoulder allows and points along it, so its laser
-        // lands on the reticle at every distance.
-        constexpr float ArmLength = 0.6f;
-        constexpr float PreferredReach = 0.45f;
-        const Vector g = rotate(orientation, {0.0f, 0.0f, -1.0f});
-        const Vector s = rotate(bodyYaw, {pose.rightShoulder[0], pose.rightShoulder[1], pose.rightShoulder[2]});
-        const Vector shoulder = {head.x + s.x, head.y + s.y, head.z + s.z};
-        const Vector eyeToShoulder = {head.x - shoulder.x, head.y - shoulder.y, head.z - shoulder.z};
-        const float b = g.x * eyeToShoulder.x + g.y * eyeToShoulder.y + g.z * eyeToShoulder.z;
-        const float c = eyeToShoulder.x * eyeToShoulder.x + eyeToShoulder.y * eyeToShoulder.y +
-                        eyeToShoulder.z * eyeToShoulder.z - ArmLength * ArmLength;
-        const float discriminant = b * b - c;
-        const float farthest = discriminant > 0.0f ? -b + std::sqrt(discriminant) : PreferredReach;
-        const float reach = std::clamp(std::min(PreferredReach, farthest), 0.05f, PreferredReach);
-        store({head.x + g.x * reach, head.y + g.y * reach, head.z + g.z * reach}, orientation,
+        // The hand points from just under and right of the eye, clear of the line of sight so the
+        // avatar's hand does not cover what it clicks, at the gaze point UI-panel distance away; apps
+        // that draw the laser from the hand pose then hit what the user looks at.
+        constexpr float PanelDistance = 0.6f;
+        const Vector local = rotate(orientation, {0.05f, -0.10f, -0.25f});
+        const Vector hand = {head.x + local.x, head.y + local.y, head.z + local.z};
+        const Vector g = rotate(orientation, {0.0f, 0.0f, -PanelDistance});
+        const Vector aim = {head.x + g.x - hand.x, head.y + g.y - hand.y, head.z + g.z - hand.z};
+        const float length = std::max(std::sqrt(aim.x * aim.x + aim.y * aim.y + aim.z * aim.z), 1e-4f);
+        store(hand, headQuaternion(std::atan2(-aim.x, -aim.z), std::asin(std::clamp(aim.y / length, -1.0f, 1.0f)), 0.0f),
               packet.rightControllerPos, packet.rightControllerRot);
     }
 
@@ -236,7 +235,10 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
         packet.buttonState |= oxr::protocol::BUTTON_LEFT_TRIGGER;
         packet.leftTrigger = 1.0f;
     }
-    if (pressedKeys.contains(TriggerMouseKey) && !leftHand)
+    // The right trigger waits until the raised hand has hovered for 150 ms, so UI sees the pointer
+    // arrive before the press.
+    const bool rightSettled = pose.pointingSeconds <= 0.0f || pose.pointingAge >= 0.15f;
+    if (pressedKeys.contains(TriggerMouseKey) && !leftHand && rightSettled)
     {
         packet.buttonState |= oxr::protocol::BUTTON_RIGHT_TRIGGER;
         packet.rightTrigger = 1.0f;
@@ -246,7 +248,7 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
         packet.buttonState |= oxr::protocol::BUTTON_LEFT_TRIGGER;
         packet.leftTrigger = 1.0f;
     }
-    if (pressedKeys.contains(Qt::Key_H))
+    if (pressedKeys.contains(Qt::Key_H) && rightSettled)
     {
         packet.buttonState |= oxr::protocol::BUTTON_RIGHT_TRIGGER;
         packet.rightTrigger = 1.0f;

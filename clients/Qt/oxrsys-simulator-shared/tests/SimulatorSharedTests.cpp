@@ -270,7 +270,8 @@ void testTouchControllerKeys()
            "Expected Left and Down to push the right thumbstick left and down");
 }
 
-// The right hand's laser must meet the gaze at every distance, which a hand aimed at one point cannot.
+// Pointing, the right hand sits clear of the line of sight and its laser meets the gaze at panel
+// distance; the trigger waits for the hand to settle so UI sees hover before press.
 void testHandsAimAtGaze()
 {
     using namespace oxrsys::qt_simulator;
@@ -283,26 +284,36 @@ void testHandsAimAtGaze()
     fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, idle);
     expect(idle.rightControllerPos[1] < 1.0f && idle.leftControllerPos[1] < 1.0f,
            "Expected both hands at the sides of the body while not pointing");
-    advanceSimulatorTracking(pose, {}, {TriggerMouseKey}, 0.01f);
+
+    const QSet<int> clicking = {TriggerMouseKey};
+    advanceSimulatorTracking(pose, {}, clicking, 0.011f);
+    TrackingPacket first = {};
+    fillSimulatorTrackingPacket(pose, clicking, 0, 100.0f, 1.0f, first);
+    expect(first.rightTrigger == 0.0f, "Expected the trigger held back while the hand rises");
+    for (int i = 0; i < 20; ++i)
+    {
+        advanceSimulatorTracking(pose, {}, clicking, 0.011f);
+    }
     TrackingPacket packet = {};
-    fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, packet);
+    fillSimulatorTrackingPacket(pose, clicking, 0, 100.0f, 1.0f, packet);
+    expect(packet.rightTrigger == 1.0f, "Expected the trigger once the hand has hovered");
+
     const float* p = packet.rightControllerPos;
     const float* q = packet.rightControllerRot;
     const float fx = -2.0f * (q[0] * q[2] + q[3] * q[1]);
     const float fy = -2.0f * (q[1] * q[2] - q[3] * q[0]);
     const float fz = -(1.0f - 2.0f * (q[0] * q[0] + q[1] * q[1]));
-    const float h = std::sqrt((p[0] - 3.0f) * (p[0] - 3.0f) + (p[1] - 1.6f) * (p[1] - 1.6f) + p[2] * p[2]);
-    expect(h > 0.1f && h < 0.6f, "Expected the right hand at arm's length from the head after walking");
-    for (const float distance : {0.5f, 5.0f})
-    {
-        const float gx = 3.0f - distance * std::sin(1.2f) * std::cos(-0.4f);
-        const float gy = 1.6f + distance * std::sin(-0.4f);
-        const float gz = -distance * std::cos(1.2f) * std::cos(-0.4f);
-        const float dx = gx - p[0], dy = gy - p[1], dz = gz - p[2];
-        const float along = dx * fx + dy * fy + dz * fz;
-        const float miss = std::sqrt(std::max(0.0f, dx * dx + dy * dy + dz * dz - along * along));
-        expect(along > 0.0f && miss < 0.001f, "Expected the right hand's laser within 1 mm of the gaze point");
-    }
+    const float ux = -std::sin(1.2f) * std::cos(-0.4f), uy = std::sin(-0.4f), uz = -std::cos(1.2f) * std::cos(-0.4f);
+    const float hx = p[0] - 3.0f, hy = p[1] - 1.6f, hz = p[2];
+    const float onLine = hx * ux + hy * uy + hz * uz;
+    const float offLine = std::sqrt(std::max(0.0f, hx * hx + hy * hy + hz * hz - onLine * onLine));
+    expect(offLine > 0.08f, "Expected the raised hand clear of the line of sight");
+    const float gx = 3.0f + 0.6f * ux, gy = 1.6f + 0.6f * uy, gz = 0.6f * uz;
+    const float dx = gx - p[0], dy = gy - p[1], dz = gz - p[2];
+    const float along = dx * fx + dy * fy + dz * fz;
+    const float miss = std::sqrt(std::max(0.0f, dx * dx + dy * dy + dz * dz - along * along));
+    expect(along > 0.0f && miss < 0.001f, "Expected the hand's laser within 1 mm of the gaze point at 0.6 m");
+
     advanceSimulatorTracking(pose, {}, {}, 2.0f);
     TrackingPacket lowered = {};
     fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, lowered);
