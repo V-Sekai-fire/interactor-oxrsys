@@ -5,10 +5,8 @@
 #include <volk.h>
 #include <pyrowave.h>
 
-#include <QCoreApplication>
 #include <QPointer>
 #include <QVulkanInstance>
-#include <QWidget>
 #include <QWindow>
 
 #include "yuv420_to_rgbx_spv.h"
@@ -46,39 +44,13 @@ uint32_t PlaneHeight(int plane, int height)
 class PyroWaveView final : public QWindow
 {
 public:
-    PyroWaveView(QVulkanInstance* instance, QWidget* inputTarget)
-        : inputTarget_(inputTarget)
+    explicit PyroWaveView(QVulkanInstance* instance)
     {
         setSurfaceType(QSurface::VulkanSurface);
         setVulkanInstance(instance);
-        setFlag(Qt::WindowDoesNotAcceptFocus);
+        // Input falls through to the widget under it; a clicked native child would otherwise try to take focus.
+        setFlags(flags() | Qt::WindowDoesNotAcceptFocus | Qt::WindowTransparentForInput);
     }
-
-protected:
-    bool event(QEvent* event) override
-    {
-        switch (event->type())
-        {
-            case QEvent::MouseButtonPress:
-            case QEvent::MouseButtonRelease:
-            case QEvent::MouseButtonDblClick:
-            case QEvent::MouseMove:
-            case QEvent::Wheel:
-            case QEvent::KeyPress:
-            case QEvent::KeyRelease:
-                if (inputTarget_ != nullptr)
-                {
-                    return QCoreApplication::sendEvent(inputTarget_, event);
-                }
-                break;
-            default:
-                break;
-        }
-        return QWindow::event(event);
-    }
-
-private:
-    QPointer<QWidget> inputTarget_;
 };
 
 } // namespace
@@ -1005,13 +977,13 @@ bool PyroWaveDecoder::initialize(QString* error)
     return true;
 }
 
-QWindow* PyroWaveDecoder::createView(QWidget* inputTarget)
+QWindow* PyroWaveDecoder::createView()
 {
     if (!gpu_)
     {
         return nullptr;
     }
-    QWindow* view = new PyroWaveView(&gpu_->instance, inputTarget);
+    QWindow* view = new PyroWaveView(&gpu_->instance);
     gpu_->view = view;
     return view;
 }

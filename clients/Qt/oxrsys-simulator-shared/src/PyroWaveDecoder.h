@@ -17,7 +17,6 @@
 #include <memory>
 #include <vector>
 
-class QWidget;
 class QWindow;
 
 class PyroWaveDecoder final
@@ -32,8 +31,8 @@ public:
     bool initialize(QString* error);
     bool isInitialized() const;
 
-    // The window frames are presented into; its input events go to inputTarget.
-    QWindow* createView(QWidget* inputTarget);
+    // The window frames are presented into; it takes no input.
+    QWindow* createView();
 
     // Decode one stream frame and present it.
     bool decode(const QByteArray& data, int64_t presentationTimeNs);

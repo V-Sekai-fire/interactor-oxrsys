@@ -1134,7 +1134,7 @@ bool SimulatorWidget::ensureVideoDecoder()
     }
     if (!videoViewCreated_ && previewWidget_ != nullptr)
     {
-        previewWidget_->setVideoView(QWidget::createWindowContainer(pyrowave_.createView(previewWidget_), previewWidget_),
+        previewWidget_->setVideoView(QWidget::createWindowContainer(pyrowave_.createView(), previewWidget_),
                                      &pyrowave_);
         videoViewCreated_ = true;
     }
