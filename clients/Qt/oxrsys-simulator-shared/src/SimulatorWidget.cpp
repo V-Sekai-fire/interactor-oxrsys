@@ -191,13 +191,18 @@ protected:
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
         const qreal row = static_cast<qreal>(height()) / static_cast<qreal>(sparks_.size());
+        qreal labelWidth = 0.0;
+        for (const QString& label : labels_)
+        {
+            labelWidth = std::max<qreal>(labelWidth, painter.fontMetrics().horizontalAdvance(label));
+        }
         for (size_t i = 0; i < sparks_.size(); ++i)
         {
             const QRectF line(0.0, row * static_cast<qreal>(i) + 2.0, width(), row - 4.0);
             painter.setPen(QColor(154, 160, 166));
             painter.drawText(line, Qt::AlignLeft | Qt::AlignVCenter, labels_[static_cast<int>(i)]);
             const QString& label = labels_[static_cast<int>(i)];
-            sparks_[i].draw(painter, line.adjusted(96.0, 0.0, 0.0, 0.0),
+            sparks_[i].draw(painter, line.adjusted(labelWidth + 8.0, 0.0, 0.0, 0.0),
                             label.contains("drop") || label.contains("fec") || label.contains("error"));
         }
     }
@@ -433,12 +438,17 @@ private:
         small.setPointSizeF(small.pointSizeF() * 0.8);
         painter.setFont(small);
         const qreal cell = (badge.width() - 24.0) / static_cast<qreal>(sparks_.size());
+        qreal labelWidth = 0.0;
+        for (const char* label : labels)
+        {
+            labelWidth = std::max<qreal>(labelWidth, painter.fontMetrics().horizontalAdvance(label));
+        }
         for (size_t i = 0; i < sparks_.size(); ++i)
         {
             const QRectF area(badge.left() + 12.0 + cell * static_cast<qreal>(i), badge.top() + 23.0, cell - 6.0, 13.0);
             painter.setPen(QColor(154, 160, 166));
             painter.drawText(area, Qt::AlignLeft | Qt::AlignVCenter, labels[i]);
-            sparks_[i].draw(painter, area.adjusted(26.0, 0.0, 0.0, 0.0), i >= 2);
+            sparks_[i].draw(painter, area.adjusted(labelWidth + 4.0, 0.0, 0.0, 0.0), i >= 2);
         }
     }
 
