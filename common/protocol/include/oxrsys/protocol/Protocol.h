@@ -329,6 +329,7 @@ enum ButtonFlags : uint32_t
     BUTTON_RIGHT_TRIGGER = 0x0100,
     BUTTON_LEFT_GRIP = 0x0200,
     BUTTON_RIGHT_GRIP = 0x0400,
+    BUTTON_HEADSET_SYSTEM = 0x0800, // The headset's own button: gaze select when no controller is held
 };
 
 enum TrackingFlags : uint32_t

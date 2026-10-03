@@ -106,6 +106,13 @@ try {
             if (-not ((Get-Content -Raw $vrpaths | ConvertFrom-Json).external_drivers -contains $driverDir)) {
                 throw "driver registration failed"
             }
+            # SteamVR uses one headset driver; forcedDriver makes it ours over any other installed one.
+            $settingsPath = Join-Path $paths.config[0] 'steamvr.vrsettings'
+            if (Test-Path $settingsPath) {
+                $settings = Get-Content -Raw $settingsPath | ConvertFrom-Json
+                $settings.steamvr | Add-Member -NotePropertyName forcedDriver -NotePropertyValue 'oxrsys' -Force
+                [System.IO.File]::WriteAllText($settingsPath, ($settings | ConvertTo-Json -Depth 20))
+            }
         }
 
         $json = Join-Path $runtimeDir 'oxrsys-runtime.json'

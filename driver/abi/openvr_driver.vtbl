@@ -71,3 +71,9 @@ interface IVRSettings "IVRSettings_003" call
 6: int32_t GetInt32(const char *pchSection, const char *pchSettingsKey, EVRSettingsError *peError);
 7: pad GetFloat
 8: void GetString(const char *pchSection, const char *pchSettingsKey, char *pchValue, uint32_t unValueLen, EVRSettingsError *peError);
+
+interface IVRDriverInput "IVRDriverInput_004" call
+0: EVRInputError CreateBooleanComponent(PropertyContainerHandle_t ulContainer, const char *pchName, VRInputComponentHandle_t *pHandle);
+1: EVRInputError UpdateBooleanComponent(VRInputComponentHandle_t ulComponent, bool bNewValue, double fTimeOffset);
+2: EVRInputError CreateScalarComponent(PropertyContainerHandle_t ulContainer, const char *pchName, VRInputComponentHandle_t *pHandle, EVRScalarType eType, EVRScalarUnits eUnits);
+3: EVRInputError UpdateScalarComponent(VRInputComponentHandle_t ulComponent, float fNewValue, double fTimeOffset);
