@@ -6,8 +6,8 @@
 // swapchain images are shared D3D11 textures imported into the app's VkDevice,
 // and one shared D3D11 fence is imported as a Vulkan timeline semaphore that
 // the app's queue signals at xrEndFrame. Unlike VDXR there is no LibOVR
-// compositor: the D3D11 side copies released eyes into textures that the NVENC
-// encoder (NvencVideoEncoder.cpp) converts and encodes without leaving the GPU.
+// compositor: the D3D11 side copies released eyes into textures that the PyroWave
+// encoder (PyroWaveVideoEncoder.cpp) imports and encodes without leaving the GPU.
 
 #pragma once
 
@@ -28,9 +28,8 @@ struct ID3D11Texture2D;
 extern const char* const kWin32VulkanInstanceExtensions;
 extern const char* const kWin32VulkanDeviceExtensions;
 
-// LUID of the adapter the runtime renders on: the first hardware adapter whose NVENC
-// encodes AV1, else the one with the most dedicated video memory (VDXR takes the HMD's
-// adapter; there is no HMD here).
+// LUID of the adapter the runtime renders and encodes on: the hardware adapter with the
+// most dedicated video memory (VDXR takes the HMD's adapter; there is no HMD here).
 bool Win32GetRuntimeAdapterLuid(uint8_t luid[8]);
 
 // Pick the VkPhysicalDevice whose deviceLUID matches the runtime adapter.
@@ -58,7 +57,7 @@ std::shared_ptr<void> Win32CreateSwapchainImages(const VulkanGraphicsContext& co
 
 // Queue a GPU copy of array slice arrayIndex of image imageIndex into a free eye texture,
 // ordered after the last Win32SerializeVulkanFrame. Empty when every eye texture is still
-// leased to the encoder, and for formats NVENC's input path does not take (depth, FP16).
+// leased to the encoder, and for formats the encoder does not take (depth, FP16).
 FrameImageSource Win32StageSwapchainSlice(const std::shared_ptr<void>& state,
                                           uint32_t imageIndex, uint32_t arrayIndex);
 
@@ -73,8 +72,5 @@ struct Win32EyeImage
 
 // The runtime's D3D11 device (ID3D11Device*) for this Vulkan device, or null.
 void* Win32InteropD3D11Device(const VulkanGraphicsContext& context);
-
-// True when NVENC on this D3D11 device offers AV1 encode (NvencVideoEncoder.cpp).
-bool NvencSupportsAv1(void* d3d11Device);
 
 #endif
