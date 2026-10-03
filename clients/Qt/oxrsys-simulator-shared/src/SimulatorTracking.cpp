@@ -72,7 +72,7 @@ void advanceSimulatorTracking(SimulatorTrackingPose& pose,
     constexpr float MoveSpeed = 2.0f;
 
     pose.yaw -= static_cast<float>(mouseDelta.x()) * MouseSensitivity;
-    pose.pitch += static_cast<float>(mouseDelta.y()) * MouseSensitivity;
+    pose.pitch -= static_cast<float>(mouseDelta.y()) * MouseSensitivity;
     pose.pitch = std::clamp(pose.pitch, -1.5f, 1.5f);
 
     if (pressedKeys.contains(Qt::Key_E))
