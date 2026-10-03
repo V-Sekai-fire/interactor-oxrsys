@@ -68,7 +68,6 @@ target_link_libraries(oxrsys_android PRIVATE
     -Wl,--whole-archive native_app_glue -Wl,--no-whole-archive
     android
     log
-    mediandk
     nativewindow
     EGL
     GLESv3
