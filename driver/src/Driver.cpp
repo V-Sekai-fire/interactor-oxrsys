@@ -650,6 +650,7 @@ public:
             gInput->CreateScalarComponent(c, "/input/grip/value", &gripValue_, VRScalarType_Absolute,
                                           VRScalarUnits_NormalizedOneSided);
             gInput->CreateBooleanComponent(c, "/input/system/click", &systemClick_);
+            gInput->CreatePoseComponent(c, "/pose/tip", &tip_);
         }
         return VRInitError_None;
     }
@@ -694,10 +695,49 @@ public:
             gInput->UpdateBooleanComponent(gripClick_, grip > 0.5f, 0.0);
             gInput->UpdateScalarComponent(gripValue_, grip, 0.0);
             gInput->UpdateBooleanComponent(systemClick_, false, 0.0);
+            const HmdMatrix34_t tip = GazeFromHand(packet, position, rotation);
+            gInput->UpdatePoseComponent(tip_, &tip, 0.0);
         }
     }
 
 private:
+    // The pointer sits at the eye looking along the gaze, so the laser lands on the reticle at any
+    // distance while the hand stays at the body: the tip is the head pose in the hand's frame.
+    static HmdMatrix34_t GazeFromHand(const oxr::protocol::TrackingPacket& packet, const float* position, const float* rotation)
+    {
+        const float hx = -rotation[0], hy = -rotation[1], hz = -rotation[2], hw = rotation[3];
+        const auto mul = [](const float* a, const float* b, float* out) {
+            out[0] = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+            out[1] = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+            out[2] = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
+            out[3] = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+        };
+        const float inverse[4] = {hx, hy, hz, hw};
+        float q[4];
+        mul(inverse, packet.headOrientation, q);
+        const float d[4] = {packet.headPosition[0] - position[0], packet.headPosition[1] - position[1],
+                            packet.headPosition[2] - position[2], 0.0f};
+        const float conjugate[4] = {rotation[0], rotation[1], rotation[2], rotation[3]};
+        float t0[4], t[4];
+        mul(inverse, d, t0);
+        mul(t0, conjugate, t);
+        HmdMatrix34_t m = {};
+        const float x = q[0], y = q[1], z = q[2], w = q[3];
+        m.m[0][0] = 1 - 2 * (y * y + z * z);
+        m.m[0][1] = 2 * (x * y - w * z);
+        m.m[0][2] = 2 * (x * z + w * y);
+        m.m[1][0] = 2 * (x * y + w * z);
+        m.m[1][1] = 1 - 2 * (x * x + z * z);
+        m.m[1][2] = 2 * (y * z - w * x);
+        m.m[2][0] = 2 * (x * z - w * y);
+        m.m[2][1] = 2 * (y * z + w * x);
+        m.m[2][2] = 1 - 2 * (x * x + y * y);
+        m.m[0][3] = t[0];
+        m.m[1][3] = t[1];
+        m.m[2][3] = t[2];
+        return m;
+    }
+
     static constexpr uint32_t kInvalidId = 0xFFFFFFFFu;
     bool left_;
     uint32_t id_ = kInvalidId;
@@ -707,6 +747,7 @@ private:
     VRInputComponentHandle_t gripClick_ = 0;
     VRInputComponentHandle_t gripValue_ = 0;
     VRInputComponentHandle_t systemClick_ = 0;
+    VRInputComponentHandle_t tip_ = 0;
 };
 
 class Hmd final : public ITrackedDeviceServerDriver

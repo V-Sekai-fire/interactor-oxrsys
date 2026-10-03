@@ -77,3 +77,8 @@ interface IVRDriverInput "IVRDriverInput_004" call
 1: EVRInputError UpdateBooleanComponent(VRInputComponentHandle_t ulComponent, bool bNewValue, double fTimeOffset);
 2: EVRInputError CreateScalarComponent(PropertyContainerHandle_t ulContainer, const char *pchName, VRInputComponentHandle_t *pHandle, EVRScalarType eType, EVRScalarUnits eUnits);
 3: EVRInputError UpdateScalarComponent(VRInputComponentHandle_t ulComponent, float fNewValue, double fTimeOffset);
+4: pad CreateHapticComponent
+5: pad CreateSkeletonComponent
+6: pad UpdateSkeletonComponent
+7: EVRInputError CreatePoseComponent(PropertyContainerHandle_t ulContainer, const char *pchName, VRInputComponentHandle_t *pHandle);
+8: EVRInputError UpdatePoseComponent(VRInputComponentHandle_t ulComponent, const HmdMatrix34_t *pMatPoseOffset, double fTimeOffset);
