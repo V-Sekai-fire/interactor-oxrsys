@@ -892,9 +892,36 @@ oxr::protocol::ServerAnnounce StreamingServer::BuildServerAnnounce(
 void StreamingServer::ControlThread()
 {
     uint8_t buffer[512];
+    uint64_t livePackets = 0;
+    std::chrono::steady_clock::time_point liveSince = std::chrono::steady_clock::now();
+    bool liveTracked = false;
 
     while (running_.load())
     {
+        // A Wi-Fi client killed without its disconnect message stops sending tracking; dropping it after
+        // 5 s puts the runtime back to broadcasting, so the next client can find it.
+        const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+        if (state_.load() == State::Connected && !clientUsesUsbAdb_.load() && trackingReceiver_ != nullptr)
+        {
+            const uint64_t packets = trackingReceiver_->GetPacketCount();
+            if (!liveTracked || packets != livePackets)
+            {
+                livePackets = packets;
+                liveSince = now;
+                liveTracked = true;
+            }
+            else if (now - liveSince > std::chrono::seconds(5))
+            {
+                spdlog::info("StreamingServer: no tracking from the client for 5 s; disconnecting it");
+                liveTracked = false;
+                HandleClientDisconnect();
+            }
+        }
+        else
+        {
+            liveTracked = false;
+        }
+
         oxrsys::runtime_socket::SetReceiveTimeout(controlSocket_, 1, 0);
 
         sockaddr_in clientAddr = {};
