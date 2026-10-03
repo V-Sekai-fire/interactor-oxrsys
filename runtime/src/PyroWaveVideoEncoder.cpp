@@ -197,7 +197,9 @@ bool VideoEncoder::Initialize(uint32_t width, uint32_t height, uint32_t fps,
     }
 
     auto state = std::make_unique<Win32PyroWaveState>();
-    auto* baseDevice = static_cast<ID3D11Device*>(Win32InteropD3D11Device(graphicsContext));
+    const bool ownDevice = graphicsContext.api == GraphicsApi::D3D11 && graphicsContext.d3d11.encoderDevice;
+    ID3D11Device* baseDevice = static_cast<ID3D11Device*>(
+        ownDevice ? graphicsContext.d3d11.device : Win32InteropD3D11Device(graphicsContext));
     ComPtr<ID3D11DeviceContext> baseContext;
     if (baseDevice == nullptr || FAILED(baseDevice->QueryInterface(IID_PPV_ARGS(&state->device))))
     {
