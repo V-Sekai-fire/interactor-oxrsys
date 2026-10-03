@@ -162,7 +162,8 @@ public:
 
     void setVideoFrame(const QImage& frame)
     {
-        videoFrame_ = frame;
+        // The stream is side-by-side stereo; the preview is the left eye.
+        videoFrame_ = frame.isNull() ? frame : frame.copy(0, 0, frame.width() / 2, frame.height());
         update();
     }
 
@@ -343,10 +344,11 @@ SimulatorWidget::SimulatorWidget(QWidget* parent)
     trackingTimer_->start();
     setState(State::Disconnected, "Disconnected");
 
-    // Scripted runs: OXRSYS_SIMULATOR_AUTOCONNECT=1 searches at start and connects to the
-    // first runtime it hears; OXRSYS_SIMULATOR_SNAPSHOT=<file.png> saves the 90th decoded
+    // Searches at start and connects to the first runtime it hears unless
+    // OXRSYS_SIMULATOR_AUTOCONNECT=0; OXRSYS_SIMULATOR_SNAPSHOT=<file.png> saves the 90th decoded
     // frame there.
-    autoConnect_ = qEnvironmentVariableIntValue("OXRSYS_SIMULATOR_AUTOCONNECT") != 0;
+    autoConnect_ = !qEnvironmentVariableIsSet("OXRSYS_SIMULATOR_AUTOCONNECT") ||
+                   qEnvironmentVariableIntValue("OXRSYS_SIMULATOR_AUTOCONNECT") != 0;
     snapshotPath_ = qEnvironmentVariable("OXRSYS_SIMULATOR_SNAPSHOT");
     if (autoConnect_)
     {

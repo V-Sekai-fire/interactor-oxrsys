@@ -221,6 +221,39 @@ void testTrackingFlagsAndMovementTargets()
            "Expected simulator tracking packet to include eye FOV");
 }
 
+void testMouseLookVerticalInverted()
+{
+    using namespace oxrsys::qt_simulator;
+    SimulatorTrackingPose pose;
+    advanceSimulatorTracking(pose, QPointF(0.0, 100.0), {}, 0.0f);
+    expect(pose.pitch > 0.0f, "Expected moving the mouse down to look up");
+}
+
+void testTouchControllerKeys()
+{
+    using namespace oxrsys::qt_simulator;
+    using namespace oxr::protocol;
+    SimulatorTrackingPose pose;
+    TrackingPacket idle = {};
+    fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, idle);
+    expect(idle.buttonState == 0 && idle.leftTrigger == 0.0f && idle.rightThumbstick[0] == 0.0f,
+           "Expected no input with no keys held");
+
+    const QSet<int> keys = {Qt::Key_T, Qt::Key_H, Qt::Key_1, Qt::Key_2, Qt::Key_3, Qt::Key_4,
+                            Qt::Key_M, Qt::Key_C, Qt::Key_N, Qt::Key_I, Qt::Key_L, Qt::Key_Left,
+                            Qt::Key_Down};
+    TrackingPacket packet = {};
+    fillSimulatorTrackingPacket(pose, keys, 0, 100.0f, 1.0f, packet);
+    const uint32_t expected = BUTTON_LEFT_TRIGGER | BUTTON_RIGHT_TRIGGER | BUTTON_X | BUTTON_Y | BUTTON_A |
+                              BUTTON_B | BUTTON_MENU | BUTTON_LEFT_THUMBSTICK | BUTTON_RIGHT_THUMBSTICK;
+    expect(packet.buttonState == expected, "Expected every Touch button key to set its bit");
+    expect(packet.leftTrigger == 1.0f && packet.rightTrigger == 1.0f, "Expected T and H to pull the triggers");
+    expect(packet.leftThumbstick[0] == 1.0f && packet.leftThumbstick[1] == 1.0f,
+           "Expected I and L to push the left thumbstick up and right");
+    expect(packet.rightThumbstick[0] == -1.0f && packet.rightThumbstick[1] == -1.0f,
+           "Expected Left and Down to push the right thumbstick left and down");
+}
+
 } // namespace
 
 int main()
@@ -234,6 +267,8 @@ int main()
         testFecRecovery();
         testFecRecoveryUsesFinalShortPacketSize();
         testTrackingFlagsAndMovementTargets();
+        testMouseLookVerticalInverted();
+        testTouchControllerKeys();
     }
     catch (const std::exception& error)
     {
