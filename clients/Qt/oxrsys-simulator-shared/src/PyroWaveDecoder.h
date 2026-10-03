@@ -8,11 +8,14 @@
 
 #include <QByteArray>
 #include <QImage>
+#include <QPoint>
+#include <QRect>
 #include <QSize>
 #include <QString>
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 class QWindow;
 
@@ -35,6 +38,15 @@ public:
     bool decode(const QByteArray& data, int64_t presentationTimeNs);
 
     QSize decodedSize() const;
+
+    struct OverlayBadge
+    {
+        QPoint position; // view device pixels
+        QImage image;    // opaque, drawn over the video as is
+    };
+
+    // Badges and solid white rectangles drawn over each presented frame.
+    void setOverlay(std::vector<OverlayBadge> badges, std::vector<QRect> lines);
 
     // The last decoded frame, read back from the GPU.
     QImage snapshot();
