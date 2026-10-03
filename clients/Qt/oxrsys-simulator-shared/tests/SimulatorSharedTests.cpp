@@ -270,7 +270,7 @@ void testTouchControllerKeys()
            "Expected Left and Down to push the right thumbstick left and down");
 }
 
-// A hand's laser must meet the gaze point however the head is turned; this failed with hands pinned in the world.
+// The right hand's laser must meet the gaze at every distance, which a hand aimed at one point cannot.
 void testHandsAimAtGaze()
 {
     using namespace oxrsys::qt_simulator;
@@ -279,25 +279,25 @@ void testHandsAimAtGaze()
     pose.yaw = 1.2f;
     pose.pitch = -0.4f;
     pose.headPosition[0] = 3.0f;
-    pose.aimDistance = 2.0f;
     TrackingPacket packet = {};
     fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, packet);
     const float* p = packet.rightControllerPos;
     const float* q = packet.rightControllerRot;
-    // Forward (0,0,-1) rotated by the hand's quaternion, extended to the gaze point's distance.
     const float fx = -2.0f * (q[0] * q[2] + q[3] * q[1]);
     const float fy = -2.0f * (q[1] * q[2] - q[3] * q[0]);
     const float fz = -(1.0f - 2.0f * (q[0] * q[0] + q[1] * q[1]));
     const float h = std::sqrt((p[0] - 3.0f) * (p[0] - 3.0f) + (p[1] - 1.6f) * (p[1] - 1.6f) + p[2] * p[2]);
-    expect(h < 0.6f, "Expected the hand within reach of the head after walking");
-    const float gx = 3.0f - 2.0f * std::sin(1.2f) * std::cos(-0.4f);
-    const float gy = 1.6f + 2.0f * std::sin(-0.4f);
-    const float gz = -2.0f * std::cos(1.2f) * std::cos(-0.4f);
-    const float dx = gx - p[0], dy = gy - p[1], dz = gz - p[2];
-    const float d = std::sqrt(dx * dx + dy * dy + dz * dz);
-    const float miss = std::sqrt((p[0] + fx * d - gx) * (p[0] + fx * d - gx) + (p[1] + fy * d - gy) * (p[1] + fy * d - gy) +
-                                 (p[2] + fz * d - gz) * (p[2] + fz * d - gz));
-    expect(miss < 0.01f, "Expected the hand's laser to pass within 1 cm of the gaze point");
+    expect(h > 0.1f && h < 0.6f, "Expected the right hand at arm's length from the head after walking");
+    for (const float distance : {0.5f, 5.0f})
+    {
+        const float gx = 3.0f - distance * std::sin(1.2f) * std::cos(-0.4f);
+        const float gy = 1.6f + distance * std::sin(-0.4f);
+        const float gz = -distance * std::cos(1.2f) * std::cos(-0.4f);
+        const float dx = gx - p[0], dy = gy - p[1], dz = gz - p[2];
+        const float along = dx * fx + dy * fy + dz * fz;
+        const float miss = std::sqrt(std::max(0.0f, dx * dx + dy * dy + dz * dz - along * along));
+        expect(along > 0.0f && miss < 0.001f, "Expected the right hand's laser within 1 mm of the gaze point");
+    }
 }
 
 void testControllersPresentFlag()

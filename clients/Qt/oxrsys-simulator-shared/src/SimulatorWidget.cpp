@@ -883,21 +883,6 @@ void SimulatorWidget::buildUi()
     fovRow->addWidget(simulatorFovSlider_, 1);
     fovRow->addWidget(simulatorFovValueLabel_);
     simulatorLayout->addLayout(fovRow);
-    auto* aimRow = new QHBoxLayout();
-    auto* aimSlider = new QSlider(Qt::Horizontal, simulatorPanel);
-    aimSlider->setRange(5, 50);
-    aimSlider->setValue(int(trackingPose_.aimDistance * 10.0f + 0.5f));
-    auto* aimValue = new QLabel(QString("%1 m").arg(trackingPose_.aimDistance, 0, 'f', 1), simulatorPanel);
-    aimValue->setMinimumWidth(56);
-    aimValue->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    connect(aimSlider, &QSlider::valueChanged, this, [this, aimValue](int tenths) {
-        trackingPose_.aimDistance = float(tenths) / 10.0f;
-        aimValue->setText(QString("%1 m").arg(trackingPose_.aimDistance, 0, 'f', 1));
-    });
-    aimRow->addWidget(new QLabel("Laser meets gaze", simulatorPanel));
-    aimRow->addWidget(aimSlider, 1);
-    aimRow->addWidget(aimValue);
-    simulatorLayout->addLayout(aimRow);
     // Off, the headset has no controllers and the dashboard falls back to gaze and the headset button.
     auto* controllers = new QCheckBox("Controllers", simulatorPanel);
     controllers->setChecked(controllersPresent_);

@@ -167,26 +167,39 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
     packet.headOrientation[2] = orientation.z;
     packet.headOrientation[3] = orientation.w;
 
-    // Each hand aims at the point aimDistance along the gaze, where its laser meets the reticle.
     const Vector head = {pose.headPosition[0], pose.headPosition[1], pose.headPosition[2]};
-    const Vector gaze = rotate(orientation, {0.0f, 0.0f, -pose.aimDistance});
     const Quaternion bodyYaw = axisAngle(0.0f, 1.0f, 0.0f, pose.yaw);
-    const auto placeHand = [&](const float* offset, float* position, float* rotation) {
-        const Vector local = rotate(bodyYaw, {offset[0], offset[1], offset[2]});
-        const Vector hand = {head.x + local.x, head.y + local.y, head.z + local.z};
-        const Vector aim = {head.x + gaze.x - hand.x, head.y + gaze.y - hand.y, head.z + gaze.z - hand.z};
-        const float length = std::max(std::sqrt(aim.x * aim.x + aim.y * aim.y + aim.z * aim.z), 1e-4f);
-        const Quaternion q = headQuaternion(std::atan2(-aim.x, -aim.z), std::asin(std::clamp(aim.y / length, -1.0f, 1.0f)), 0.0f);
-        position[0] = hand.x;
-        position[1] = hand.y;
-        position[2] = hand.z;
+    const auto store = [](const Vector& p, const Quaternion& q, float* position, float* rotation) {
+        position[0] = p.x;
+        position[1] = p.y;
+        position[2] = p.z;
         rotation[0] = q.x;
         rotation[1] = q.y;
         rotation[2] = q.z;
         rotation[3] = q.w;
     };
-    placeHand(pose.leftHandOffset, packet.leftControllerPos, packet.leftControllerRot);
-    placeHand(pose.rightHandOffset, packet.rightControllerPos, packet.rightControllerRot);
+
+    const Vector rest = rotate(bodyYaw, {pose.leftHandOffset[0], pose.leftHandOffset[1], pose.leftHandOffset[2]});
+    store({head.x + rest.x, head.y + rest.y, head.z + rest.z}, bodyYaw, packet.leftControllerPos,
+          packet.leftControllerRot);
+
+    // Arm IK sights the right hand along the gaze, as a person points at what they look at: the hand
+    // sits on the line of sight at the reach the shoulder allows and points along it, so its laser
+    // lands on the reticle at every distance.
+    constexpr float ArmLength = 0.6f;
+    constexpr float PreferredReach = 0.45f;
+    const Vector g = rotate(orientation, {0.0f, 0.0f, -1.0f});
+    const Vector s = rotate(bodyYaw, {pose.rightHandOffset[0], pose.rightHandOffset[1], pose.rightHandOffset[2]});
+    const Vector shoulder = {head.x + s.x, head.y + s.y, head.z + s.z};
+    const Vector eyeToShoulder = {head.x - shoulder.x, head.y - shoulder.y, head.z - shoulder.z};
+    const float b = g.x * eyeToShoulder.x + g.y * eyeToShoulder.y + g.z * eyeToShoulder.z;
+    const float c = eyeToShoulder.x * eyeToShoulder.x + eyeToShoulder.y * eyeToShoulder.y +
+                    eyeToShoulder.z * eyeToShoulder.z - ArmLength * ArmLength;
+    const float discriminant = b * b - c;
+    const float farthest = discriminant > 0.0f ? -b + std::sqrt(discriminant) : PreferredReach;
+    const float reach = std::clamp(std::min(PreferredReach, farthest), 0.05f, PreferredReach);
+    store({head.x + g.x * reach, head.y + g.y * reach, head.z + g.z * reach}, orientation,
+          packet.rightControllerPos, packet.rightControllerRot);
 
     if (pressedKeys.contains(Qt::Key_F))
     {
