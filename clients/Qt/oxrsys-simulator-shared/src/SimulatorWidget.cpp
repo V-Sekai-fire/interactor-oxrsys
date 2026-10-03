@@ -144,6 +144,16 @@ public:
         publishOverlay();
     }
 
+    // Takes the live pose into the badge text; called at the stats rate.
+    void latchBadgePose()
+    {
+        shownYaw_ = yaw_;
+        shownPitch_ = pitch_;
+        std::copy(std::begin(position_), std::end(position_), std::begin(shownPosition_));
+        update();
+        publishOverlay();
+    }
+
     void setVideoView(QWidget* view, PyroWaveDecoder* decoder)
     {
         QVBoxLayout* layout = new QVBoxLayout(this);
@@ -297,14 +307,14 @@ private:
         painter.setPen(QColor(242, 244, 248));
         painter.drawText(badge.adjusted(12, 6, -12, -22),
                          QString("Yaw %1  Pitch %2")
-                             .arg(radiansToDegrees(yaw_), 0, 'f', 1)
-                             .arg(radiansToDegrees(pitch_), 0, 'f', 1));
+                             .arg(radiansToDegrees(shownYaw_), 0, 'f', 1)
+                             .arg(radiansToDegrees(shownPitch_), 0, 'f', 1));
         painter.setPen(QColor(154, 160, 166));
         painter.drawText(badge.adjusted(12, 22, -12, -6),
                          QString("Position %1, %2, %3")
-                             .arg(position_[0], 0, 'f', 2)
-                             .arg(position_[1], 0, 'f', 2)
-                             .arg(position_[2], 0, 'f', 2));
+                             .arg(shownPosition_[0], 0, 'f', 2)
+                             .arg(shownPosition_[1], 0, 'f', 2)
+                             .arg(shownPosition_[2], 0, 'f', 2));
     }
 
     void drawCaptureBadge(QPainter& painter, const QRectF& badge) const
@@ -398,6 +408,9 @@ private:
     float pitch_ = 0.0f;
     float roll_ = 0.0f;
     float position_[3] = {0.0f, 1.6f, 0.0f};
+    float shownYaw_ = 0.0f;
+    float shownPitch_ = 0.0f;
+    float shownPosition_[3] = {0.0f, 1.6f, 0.0f};
     QWidget* videoView_ = nullptr;
     PyroWaveDecoder* decoder_ = nullptr;
     bool overlayDirty_ = false;
@@ -435,6 +448,11 @@ SimulatorWidget::SimulatorWidget(QWidget* parent)
     connect(discoverySocket_, &QUdpSocket::readyRead, this, &SimulatorWidget::readPendingDiscoveryDatagrams);
     connect(videoSocket_, &QUdpSocket::readyRead, this, &SimulatorWidget::readPendingVideoDatagrams);
     connect(trackingTimer_, &QTimer::timeout, this, &SimulatorWidget::sendTrackingSample);
+    // Counters and pose text change on every packet; showing them at a fixed rate keeps them readable.
+    statsTimer_ = new QTimer(this);
+    statsTimer_->setInterval(250);
+    connect(statsTimer_, &QTimer::timeout, this, &SimulatorWidget::refreshStats);
+    statsTimer_->start();
 
     poseClock_.start();
     trackingTimer_->start();
@@ -662,10 +680,7 @@ void SimulatorWidget::sendTrackingSample()
         oxr::protocol::TRACKING_PORT);
 
     ++trackingPacketsSent_;
-    if ((trackingPacketsSent_ % 30) == 0)
-    {
-        updateTelemetrySummary();
-    }
+    updateTelemetrySummary();
 }
 
 void SimulatorWidget::buildUi()
@@ -919,6 +934,34 @@ void SimulatorWidget::updateServerSummary()
 }
 
 void SimulatorWidget::updatePreviewStatus()
+{
+    previewStatusDirty_ = true;
+}
+
+void SimulatorWidget::updateTelemetrySummary()
+{
+    telemetryDirty_ = true;
+}
+
+void SimulatorWidget::refreshStats()
+{
+    if (previewStatusDirty_)
+    {
+        previewStatusDirty_ = false;
+        pushPreviewStatus();
+    }
+    if (telemetryDirty_)
+    {
+        telemetryDirty_ = false;
+        pushTelemetrySummary();
+    }
+    if (previewWidget_ != nullptr)
+    {
+        previewWidget_->latchBadgePose();
+    }
+}
+
+void SimulatorWidget::pushPreviewStatus()
 {
     if (previewWidget_ == nullptr)
     {
@@ -1300,7 +1343,7 @@ void SimulatorWidget::resetInputState()
     hasLastMousePosition_ = false;
 }
 
-void SimulatorWidget::updateTelemetrySummary()
+void SimulatorWidget::pushTelemetrySummary()
 {
     if (state_ != State::Streaming)
     {

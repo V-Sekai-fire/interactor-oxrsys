@@ -77,6 +77,9 @@ private:
     void updateServerSummary();
     void updateTelemetrySummary();
     void updatePreviewStatus();
+    void refreshStats();
+    void pushTelemetrySummary();
+    void pushPreviewStatus();
     void advanceSimulation(float deltaTime);
     void fillTrackingPacket(oxr::protocol::TrackingPacket& packet) const;
     float simulatorPerEyeAspect() const;
@@ -122,6 +125,9 @@ private:
     QUdpSocket* controlSocket_ = nullptr;
     QUdpSocket* trackingSocket_ = nullptr;
     QTimer* trackingTimer_ = nullptr;
+    QTimer* statsTimer_ = nullptr;
+    bool previewStatusDirty_ = true;
+    bool telemetryDirty_ = true;
 
     QHostAddress serverAddress_;
     oxr::protocol::ServerAnnounce discoveredServer_{};
