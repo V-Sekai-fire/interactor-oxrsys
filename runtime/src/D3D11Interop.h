@@ -8,6 +8,8 @@
 // the app's queue signals at xrEndFrame. Unlike VDXR there is no LibOVR
 // compositor: the D3D11 side copies released eyes into textures that the PyroWave
 // encoder (PyroWaveVideoEncoder.cpp) imports and encodes without leaving the GPU.
+// D3D11 apps get the same shared textures opened on their own device, and the shared fence
+// opened there too, so their frames reach the same staging copies with no Vulkan in between.
 
 #pragma once
 
@@ -31,6 +33,9 @@ extern const char* const kWin32VulkanDeviceExtensions;
 // LUID of the adapter the runtime renders and encodes on: the hardware adapter with the
 // most dedicated video memory (VDXR takes the HMD's adapter; there is no HMD here).
 bool Win32GetRuntimeAdapterLuid(uint8_t luid[8]);
+
+// LUID of the adapter an ID3D11Device was created on.
+bool Win32DeviceAdapterLuid(void* d3d11Device, uint8_t luid[8]);
 
 // Pick the VkPhysicalDevice whose deviceLUID matches the runtime adapter.
 VkPhysicalDevice Win32SelectPhysicalDevice(VkInstance instance);
@@ -70,7 +75,25 @@ struct Win32EyeImage
     uint32_t height = 0;
 };
 
-// The runtime's D3D11 device (ID3D11Device*) for this Vulkan device, or null.
-void* Win32InteropD3D11Device(const VulkanGraphicsContext& context);
+// The D3D11 swapchain formats (DXGI_FORMAT values), in preference order.
+std::vector<int64_t> Win32SupportedD3D11Formats();
+
+// Check the app's ID3D11Device (hardware adapter, fence support), create the runtime device on
+// its adapter and open the shared fence on the app's device. The session holds the result for
+// its lifetime; empty on failure (logged).
+std::shared_ptr<void> Win32CreateD3D11Interop(const D3D11GraphicsContext& context);
+
+// Signal the shared fence on the app's immediate context, from the thread calling xrEndFrame,
+// and queue the matching wait on the runtime's context. 0 on failure.
+uint64_t Win32SerializeD3D11Frame(const D3D11GraphicsContext& context);
+
+// Create imageCount shared textures on the runtime device and open each on the app's device.
+// textures receives the app-side ID3D11Texture2D pointers, owned by the returned state.
+std::shared_ptr<void> Win32CreateD3D11SwapchainImages(const D3D11GraphicsContext& context,
+                                                      const XrSwapchainCreateInfo& createInfo,
+                                                      uint32_t imageCount, std::vector<void*>& textures);
+
+// The runtime's D3D11 device (ID3D11Device*) for this session's graphics binding, or null.
+void* Win32InteropD3D11Device(const GraphicsContext& context);
 
 #endif

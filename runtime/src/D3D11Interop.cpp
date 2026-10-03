@@ -87,10 +87,39 @@ bool FindRuntimeAdapter(AdapterInfo& out)
     if (!probed)
     {
         found = FindRuntimeAdapterUncached(cached);
+        // Keep the LUID only: a static COM reference is released after DXGI unloads at exit.
+        cached.adapter.Reset();
         probed = true;
     }
     out = cached;
     return found;
+}
+
+bool DescribeAdapter(IDXGIAdapter1* adapter, AdapterInfo& out)
+{
+    DXGI_ADAPTER_DESC1 desc = {};
+    if (adapter == nullptr || FAILED(adapter->GetDesc1(&desc)))
+    {
+        return false;
+    }
+    out.adapter = adapter;
+    out.luid = desc.AdapterLuid;
+    out.vendorId = desc.VendorId;
+    return (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0;
+}
+
+// The adapter a D3D11 device was created on; false for software adapters.
+bool FindDeviceAdapter(ID3D11Device* device, AdapterInfo& out)
+{
+    ComPtr<IDXGIDevice> dxgiDevice;
+    ComPtr<IDXGIAdapter> adapter;
+    ComPtr<IDXGIAdapter1> adapter1;
+    if (device == nullptr || FAILED(device->QueryInterface(IID_PPV_ARGS(&dxgiDevice))) ||
+        FAILED(dxgiDevice->GetAdapter(&adapter)) || FAILED(adapter.As(&adapter1)))
+    {
+        return false;
+    }
+    return DescribeAdapter(adapter1.Get(), out);
 }
 
 bool FindAdapterByLuid(const uint8_t luid[VK_LUID_SIZE], AdapterInfo& out)
@@ -265,74 +294,29 @@ struct DeviceFuncs
     }
 };
 
-// One per VkDevice: the D3D11 submission device on the app's adapter, the shared fence
-// imported as a timeline semaphore, and a command buffer on the app's queue for the
-// one-time layout transitions (VDXR vulkan_interop.cpp:424-505).
-struct Interop
+// The runtime's D3D11 device on the app's adapter and the shared fence the app's frames
+// signal; the staging copies run on its multithread-protected immediate context.
+struct SubmissionDevice
 {
-    VkInstance instance = VK_NULL_HANDLE;
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    VkDevice device = VK_NULL_HANDLE;
-    VkQueue queue = VK_NULL_HANDLE;
-    DeviceFuncs vk;
-
     ComPtr<ID3D11Device5> d3d;
     ComPtr<ID3D11DeviceContext4> context;
     ComPtr<ID3D11Fence> fence;
     HANDLE fenceHandle = nullptr;
     bool ntHandles = false;
 
-    VkSemaphore timeline = VK_NULL_HANDLE;
-    VkCommandPool commandPool = VK_NULL_HANDLE;
-    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
-    VkFence flushFence = VK_NULL_HANDLE;
-
-    std::mutex mutex; // guards fenceValue and the command buffer
+    std::mutex mutex; // guards fenceValue and the Vulkan command buffer
     uint64_t fenceValue = 0;
 
-    ~Interop()
+    ~SubmissionDevice()
     {
-        if (device != VK_NULL_HANDLE)
-        {
-            if (flushFence != VK_NULL_HANDLE)
-            {
-                vk.destroyFence(device, flushFence, nullptr);
-            }
-            if (commandPool != VK_NULL_HANDLE)
-            {
-                vk.destroyCommandPool(device, commandPool, nullptr);
-            }
-            if (timeline != VK_NULL_HANDLE)
-            {
-                vk.destroySemaphore(device, timeline, nullptr);
-            }
-        }
         if (fenceHandle != nullptr)
         {
             CloseHandle(fenceHandle);
         }
     }
 
-    bool Initialize(const VulkanGraphicsContext& ctx)
+    bool Create(const AdapterInfo& adapter)
     {
-        instance = static_cast<VkInstance>(ctx.instance);
-        physicalDevice = static_cast<VkPhysicalDevice>(ctx.physicalDevice);
-        device = static_cast<VkDevice>(ctx.device);
-
-        if (!vk.Load(device))
-        {
-            spdlog::error("OXRSys: Vulkan interop functions missing; the app must enable: {}",
-                          kWin32VulkanDeviceExtensions);
-            return false;
-        }
-
-        uint8_t luid[VK_LUID_SIZE] = {};
-        AdapterInfo adapter;
-        if (!GetPhysicalDeviceLuid(instance, physicalDevice, luid) || !FindAdapterByLuid(luid, adapter))
-        {
-            spdlog::error("OXRSys: no DXGI adapter matches the Vulkan device LUID");
-            return false;
-        }
         ntHandles = adapter.vendorId == 0x8086;
 
         const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1};
@@ -359,6 +343,69 @@ struct Interop
             FAILED(fence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &fenceHandle)))
         {
             spdlog::error("OXRSys: shared D3D11 fence creation failed");
+            return false;
+        }
+        return true;
+    }
+};
+
+// One per VkDevice: the submission device, the shared fence imported as a timeline
+// semaphore, and a command buffer on the app's queue for the one-time layout transitions
+// (VDXR vulkan_interop.cpp:424-505).
+struct Interop : SubmissionDevice
+{
+    VkInstance instance = VK_NULL_HANDLE;
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;
+    VkQueue queue = VK_NULL_HANDLE;
+    DeviceFuncs vk;
+
+    VkSemaphore timeline = VK_NULL_HANDLE;
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    VkFence flushFence = VK_NULL_HANDLE;
+
+    ~Interop()
+    {
+        if (device != VK_NULL_HANDLE)
+        {
+            if (flushFence != VK_NULL_HANDLE)
+            {
+                vk.destroyFence(device, flushFence, nullptr);
+            }
+            if (commandPool != VK_NULL_HANDLE)
+            {
+                vk.destroyCommandPool(device, commandPool, nullptr);
+            }
+            if (timeline != VK_NULL_HANDLE)
+            {
+                vk.destroySemaphore(device, timeline, nullptr);
+            }
+        }
+    }
+
+    bool Initialize(const VulkanGraphicsContext& ctx)
+    {
+        instance = static_cast<VkInstance>(ctx.instance);
+        physicalDevice = static_cast<VkPhysicalDevice>(ctx.physicalDevice);
+        device = static_cast<VkDevice>(ctx.device);
+
+        if (!vk.Load(device))
+        {
+            spdlog::error("OXRSys: Vulkan interop functions missing; the app must enable: {}",
+                          kWin32VulkanDeviceExtensions);
+            return false;
+        }
+
+        uint8_t luid[VK_LUID_SIZE] = {};
+        AdapterInfo adapter;
+        if (!GetPhysicalDeviceLuid(instance, physicalDevice, luid) || !FindAdapterByLuid(luid, adapter))
+        {
+            spdlog::error("OXRSys: no DXGI adapter matches the Vulkan device LUID");
+            return false;
+        }
+        if (!Create(adapter))
+        {
             return false;
         }
 
@@ -440,6 +487,75 @@ std::shared_ptr<Interop> GetInterop(const VulkanGraphicsContext& ctx)
     return gInterop;
 }
 
+// One per D3D11 session: the submission device on the app's adapter, with the app's device,
+// its immediate context and the shared fence opened on it.
+struct D3D11Interop : SubmissionDevice
+{
+    ComPtr<ID3D11Device5> appDevice;
+    ComPtr<ID3D11DeviceContext4> appContext;
+    ComPtr<ID3D11Fence> appFence;
+
+    bool Initialize(ID3D11Device* device)
+    {
+        AdapterInfo adapter;
+        if (!FindDeviceAdapter(device, adapter))
+        {
+            spdlog::error("OXRSys: the app's D3D11 device is not on a hardware adapter");
+            return false;
+        }
+        AdapterInfo runtimeAdapter;
+        if (FindRuntimeAdapter(runtimeAdapter) &&
+            std::memcmp(&runtimeAdapter.luid, &adapter.luid, sizeof(LUID)) != 0)
+        {
+            spdlog::warn("OXRSys: the app's D3D11 device is not on the adapter from "
+                         "xrGetD3D11GraphicsRequirementsKHR; streaming from its adapter instead");
+        }
+
+        ComPtr<ID3D11DeviceContext> baseContext;
+        device->GetImmediateContext(&baseContext);
+        if (FAILED(device->QueryInterface(IID_PPV_ARGS(&appDevice))) || FAILED(baseContext.As(&appContext)))
+        {
+            spdlog::error("OXRSys: the app's D3D11 device has no fences (ID3D11Device5 needs Windows 10 1703)");
+            return false;
+        }
+        if (!Create(adapter))
+        {
+            return false;
+        }
+        HRESULT hr = appDevice->OpenSharedFence(fenceHandle, IID_PPV_ARGS(&appFence));
+        if (FAILED(hr))
+        {
+            spdlog::error("OXRSys: opening the shared fence on the app's D3D11 device failed (0x{:08x})",
+                          static_cast<uint32_t>(hr));
+            return false;
+        }
+
+        DXGI_ADAPTER_DESC1 desc = {};
+        adapter.adapter->GetDesc1(&desc);
+        spdlog::info("OXRSys: D3D11 app interop on adapter {:04x}:{:04x} ({} handles)", desc.VendorId,
+                     desc.DeviceId, ntHandles ? "NT" : "KMT");
+        return true;
+    }
+};
+
+std::weak_ptr<D3D11Interop> gD3D11Interop;
+
+std::shared_ptr<D3D11Interop> GetD3D11Interop(const D3D11GraphicsContext& ctx)
+{
+    std::scoped_lock lock(gInteropMutex);
+    std::shared_ptr<D3D11Interop> interop = gD3D11Interop.lock();
+    if (interop && ctx.device != nullptr)
+    {
+        ComPtr<ID3D11Device5> device;
+        static_cast<ID3D11Device*>(ctx.device)->QueryInterface(IID_PPV_ARGS(&device));
+        if (device.Get() == interop->appDevice.Get())
+        {
+            return interop;
+        }
+    }
+    return nullptr;
+}
+
 constexpr uint32_t kEyeSlotsPerSlice = 3;
 
 struct EyeSlot
@@ -448,33 +564,77 @@ struct EyeSlot
     std::shared_ptr<std::atomic_bool> inUse = std::make_shared<std::atomic_bool>(false);
 };
 
-// The typed format an eye is copied into; the copy reinterprets the typeless storage, so
-// sRGB-encoded bytes arrive as they are, which is what the video path wants.
-DXGI_FORMAT EyeFormat(VkFormat format)
+// DXGI_FORMAT -> its TYPELESS family, so apps can view sRGB swapchains as UNORM too (as VDXR
+// hands out typeless D3D11 textures); typeless requests map to themselves.
+DXGI_FORMAT DxgiTypelessFormat(DXGI_FORMAT format)
 {
     switch (format)
     {
-        case VK_FORMAT_R8G8B8A8_SRGB:
-        case VK_FORMAT_R8G8B8A8_UNORM:
+        case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+        case DXGI_FORMAT_R8G8B8A8_UNORM:
+        case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+            return DXGI_FORMAT_R8G8B8A8_TYPELESS;
+        case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        case DXGI_FORMAT_B8G8R8A8_UNORM:
+        case DXGI_FORMAT_B8G8R8A8_TYPELESS:
+            return DXGI_FORMAT_B8G8R8A8_TYPELESS;
+        case DXGI_FORMAT_R16G16B16A16_FLOAT:
+        case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+            return DXGI_FORMAT_R16G16B16A16_TYPELESS;
+        case DXGI_FORMAT_D32_FLOAT:
+            return DXGI_FORMAT_R32_TYPELESS;
+        case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+            return DXGI_FORMAT_R32G8X24_TYPELESS;
+        case DXGI_FORMAT_D24_UNORM_S8_UINT:
+            return DXGI_FORMAT_R24G8_TYPELESS;
+        case DXGI_FORMAT_D16_UNORM:
+            return DXGI_FORMAT_R16_TYPELESS;
+        default:
+            return DXGI_FORMAT_UNKNOWN;
+    }
+}
+
+bool IsDepthDxgiFormat(DXGI_FORMAT format)
+{
+    return format == DXGI_FORMAT_D32_FLOAT || format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT ||
+           format == DXGI_FORMAT_D24_UNORM_S8_UINT || format == DXGI_FORMAT_D16_UNORM;
+}
+
+bool DxgiHasStencil(DXGI_FORMAT format)
+{
+    return format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT || format == DXGI_FORMAT_D24_UNORM_S8_UINT;
+}
+
+// The typed format an eye is copied into; the copy reinterprets the typeless storage, so
+// sRGB-encoded bytes arrive as they are, which is what the video path wants. FP16 needs a
+// tone-mapping pass and depth is never shown, so neither is staged.
+DXGI_FORMAT DxgiEyeFormat(DXGI_FORMAT typeless)
+{
+    switch (typeless)
+    {
+        case DXGI_FORMAT_R8G8B8A8_TYPELESS:
             return DXGI_FORMAT_R8G8B8A8_UNORM;
-        case VK_FORMAT_B8G8R8A8_SRGB:
-        case VK_FORMAT_B8G8R8A8_UNORM:
+        case DXGI_FORMAT_B8G8R8A8_TYPELESS:
             return DXGI_FORMAT_B8G8R8A8_UNORM;
         default:
-            return DXGI_FORMAT_UNKNOWN; // FP16 needs a tone-mapping pass; depth is never shown
+            return DXGI_FORMAT_UNKNOWN;
     }
 }
 
 struct SwapchainState
 {
-    std::shared_ptr<Interop> interop;
+    std::shared_ptr<SubmissionDevice> device;
+    std::shared_ptr<Interop> interop; // Vulkan apps only
+    GraphicsApi api = GraphicsApi::Vulkan;
     VkFormat format = VK_FORMAT_UNDEFINED;
     DXGI_FORMAT typeless = DXGI_FORMAT_UNKNOWN;
+    DXGI_FORMAT eyeFormat = DXGI_FORMAT_UNKNOWN;
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t mipCount = 1;
     uint32_t arraySize = 1;
     std::vector<ComPtr<ID3D11Texture2D>> textures;
+    std::vector<ComPtr<ID3D11Texture2D>> appTextures; // D3D11 apps: textures opened on their device
     std::vector<HANDLE> ntHandles;
     std::vector<VkImage> images;
     std::vector<VkDeviceMemory> memories;
@@ -778,6 +938,7 @@ std::shared_ptr<void> Win32CreateSwapchainImages(const VulkanGraphicsContext& ct
     {
         return nullptr;
     }
+    state->device = state->interop;
     Interop& interop = *state->interop;
 
     state->format = static_cast<VkFormat>(createInfo.format);
@@ -863,7 +1024,8 @@ std::shared_ptr<void> Win32CreateSwapchainImages(const VulkanGraphicsContext& ct
         return nullptr;
     }
 
-    if (EyeFormat(state->format) != DXGI_FORMAT_UNKNOWN)
+    state->eyeFormat = DxgiEyeFormat(state->typeless);
+    if (state->eyeFormat != DXGI_FORMAT_UNKNOWN)
     {
         state->eyes.resize(state->arraySize);
     }
@@ -884,7 +1046,7 @@ FrameImageSource Win32StageSwapchainSlice(const std::shared_ptr<void>& opaqueSta
     {
         return {};
     }
-    Interop& interop = *state->interop;
+    SubmissionDevice& device = *state->device;
 
     EyeSlot* slot = nullptr;
     {
@@ -911,11 +1073,11 @@ FrameImageSource Win32StageSwapchainSlice(const std::shared_ptr<void>& opaqueSta
         desc.Height = state->height;
         desc.MipLevels = 1;
         desc.ArraySize = 1;
-        desc.Format = EyeFormat(state->format);
+        desc.Format = state->eyeFormat;
         desc.SampleDesc.Count = 1;
         desc.Usage = D3D11_USAGE_DEFAULT;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET; // video processor input
-        if (FAILED(interop.d3d->CreateTexture2D(&desc, nullptr, &slot->texture)))
+        if (FAILED(device.d3d->CreateTexture2D(&desc, nullptr, &slot->texture)))
         {
             slot->inUse->store(false);
             spdlog::error("OXRSys: eye texture creation failed");
@@ -923,8 +1085,8 @@ FrameImageSource Win32StageSwapchainSlice(const std::shared_ptr<void>& opaqueSta
         }
     }
 
-    // Runs on the GPU after the Wait queued by Win32SerializeVulkanFrame.
-    interop.context->CopySubresourceRegion(slot->texture.Get(), 0, 0, 0, 0, state->textures[imageIndex].Get(),
+    // Runs on the GPU after the Wait queued by Win32SerializeVulkanFrame or Win32SerializeD3D11Frame.
+    device.context->CopySubresourceRegion(slot->texture.Get(), 0, 0, 0, 0, state->textures[imageIndex].Get(),
                                            D3D11CalcSubresource(0, arrayIndex, state->mipCount), nullptr);
 
     auto* eye = new Win32EyeImage{};
@@ -934,7 +1096,7 @@ FrameImageSource Win32StageSwapchainSlice(const std::shared_ptr<void>& opaqueSta
     eye->height = state->height;
 
     FrameImageSource source = {};
-    source.api = GraphicsApi::Vulkan;
+    source.api = state->api;
     std::shared_ptr<std::atomic_bool> inUse = slot->inUse;
     source.image = std::shared_ptr<void>(eye, [inUse](void* ptr) {
         auto* image = static_cast<Win32EyeImage*>(ptr);
@@ -945,9 +1107,195 @@ FrameImageSource Win32StageSwapchainSlice(const std::shared_ptr<void>& opaqueSta
     return source;
 }
 
-void* Win32InteropD3D11Device(const VulkanGraphicsContext& context)
+bool Win32DeviceAdapterLuid(void* d3d11Device, uint8_t luid[8])
 {
-    std::shared_ptr<Interop> interop = GetInterop(context);
+    AdapterInfo adapter;
+    if (!FindDeviceAdapter(static_cast<ID3D11Device*>(d3d11Device), adapter))
+    {
+        return false;
+    }
+    std::memcpy(luid, &adapter.luid, sizeof(LUID));
+    return true;
+}
+
+std::vector<int64_t> Win32SupportedD3D11Formats()
+{
+    std::vector<int64_t> formats = {
+        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+        DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
+        DXGI_FORMAT_R8G8B8A8_UNORM,
+        DXGI_FORMAT_B8G8R8A8_UNORM,
+        DXGI_FORMAT_R16G16B16A16_FLOAT,
+        DXGI_FORMAT_D32_FLOAT,
+    };
+    if (!Win32RequiresNtHandles())
+    {
+        formats.push_back(DXGI_FORMAT_D32_FLOAT_S8X24_UINT);
+        formats.push_back(DXGI_FORMAT_D24_UNORM_S8_UINT);
+    }
+    formats.push_back(DXGI_FORMAT_D16_UNORM);
+    formats.push_back(DXGI_FORMAT_R8G8B8A8_TYPELESS);
+    formats.push_back(DXGI_FORMAT_B8G8R8A8_TYPELESS);
+    formats.push_back(DXGI_FORMAT_R16G16B16A16_TYPELESS);
+    return formats;
+}
+
+std::shared_ptr<void> Win32CreateD3D11Interop(const D3D11GraphicsContext& ctx)
+{
+    if (ctx.device == nullptr)
+    {
+        spdlog::error("OXRSys: the D3D11 graphics binding has no device");
+        return nullptr;
+    }
+    std::shared_ptr<D3D11Interop> interop = std::make_shared<D3D11Interop>();
+    if (!interop->Initialize(static_cast<ID3D11Device*>(ctx.device)))
+    {
+        return nullptr;
+    }
+    std::scoped_lock lock(gInteropMutex);
+    gD3D11Interop = interop;
+    return interop;
+}
+
+uint64_t Win32SerializeD3D11Frame(const D3D11GraphicsContext& ctx)
+{
+    std::shared_ptr<D3D11Interop> interop = GetD3D11Interop(ctx);
+    if (!interop)
+    {
+        return 0;
+    }
+
+    std::scoped_lock lock(interop->mutex);
+    const uint64_t value = interop->fenceValue + 1;
+    if (FAILED(interop->appContext->Signal(interop->appFence.Get(), value)))
+    {
+        spdlog::error("OXRSys: signalling the frame fence on the app's D3D11 context failed");
+        return 0;
+    }
+    interop->appContext->Flush();
+    interop->fenceValue = value;
+    interop->context->Wait(interop->fence.Get(), value);
+    return value;
+}
+
+std::shared_ptr<void> Win32CreateD3D11SwapchainImages(const D3D11GraphicsContext& ctx,
+                                                      const XrSwapchainCreateInfo& createInfo,
+                                                      uint32_t imageCount, std::vector<void*>& textures)
+{
+    std::shared_ptr<D3D11Interop> interop = GetD3D11Interop(ctx);
+    if (!interop)
+    {
+        return nullptr;
+    }
+    std::shared_ptr<SwapchainState> state = std::make_shared<SwapchainState>();
+    state->device = interop;
+    state->api = GraphicsApi::D3D11;
+
+    const DXGI_FORMAT format = static_cast<DXGI_FORMAT>(createInfo.format);
+    state->typeless = DxgiTypelessFormat(format);
+    state->width = createInfo.width;
+    state->height = createInfo.height;
+    state->mipCount = std::max(createInfo.mipCount, 1u);
+    state->arraySize = std::max(createInfo.arraySize, 1u);
+
+    if (state->typeless == DXGI_FORMAT_UNKNOWN || (interop->ntHandles && DxgiHasStencil(format)))
+    {
+        spdlog::error("OXRSys: D3D11 swapchain format {} is not supported", createInfo.format);
+        return nullptr;
+    }
+    if (createInfo.sampleCount > 1 || createInfo.faceCount > 1)
+    {
+        spdlog::error("OXRSys: swapchain sampleCount {} / faceCount {} is not supported",
+                      createInfo.sampleCount, createInfo.faceCount);
+        return nullptr;
+    }
+
+    // Depth cannot also be a render target or UAV; colour is always a render target.
+    const bool depth = IsDepthDxgiFormat(format);
+    const XrSwapchainUsageFlags usage = createInfo.usageFlags;
+    UINT bindFlags = depth ? D3D11_BIND_DEPTH_STENCIL : D3D11_BIND_RENDER_TARGET;
+    if (usage & XR_SWAPCHAIN_USAGE_SAMPLED_BIT)
+        bindFlags |= D3D11_BIND_SHADER_RESOURCE;
+    if (!depth && (usage & XR_SWAPCHAIN_USAGE_UNORDERED_ACCESS_BIT))
+        bindFlags |= D3D11_BIND_UNORDERED_ACCESS;
+
+    D3D11_TEXTURE2D_DESC desc = {};
+    desc.Width = state->width;
+    desc.Height = state->height;
+    desc.MipLevels = state->mipCount;
+    desc.ArraySize = state->arraySize;
+    desc.Format = state->typeless;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = bindFlags;
+    desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED | (interop->ntHandles ? D3D11_RESOURCE_MISC_SHARED_NTHANDLE : 0);
+
+    state->textures.resize(imageCount);
+    state->appTextures.resize(imageCount);
+    state->ntHandles.resize(imageCount, nullptr);
+    for (uint32_t i = 0; i < imageCount; ++i)
+    {
+        HRESULT hr = interop->d3d->CreateTexture2D(&desc, nullptr, &state->textures[i]);
+        if (FAILED(hr))
+        {
+            spdlog::error("OXRSys: CreateTexture2D for a D3D11 swapchain image failed (0x{:08x})",
+                          static_cast<uint32_t>(hr));
+            return nullptr;
+        }
+
+        HANDLE handle = nullptr;
+        if (interop->ntHandles)
+        {
+            ComPtr<IDXGIResource1> resource;
+            state->textures[i].As(&resource);
+            hr = resource ? resource->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &handle) : E_FAIL;
+            state->ntHandles[i] = handle;
+            if (SUCCEEDED(hr))
+            {
+                hr = interop->appDevice->OpenSharedResource1(handle, IID_PPV_ARGS(&state->appTextures[i]));
+            }
+        }
+        else
+        {
+            ComPtr<IDXGIResource> resource;
+            state->textures[i].As(&resource);
+            hr = resource ? resource->GetSharedHandle(&handle) : E_FAIL;
+            if (SUCCEEDED(hr))
+            {
+                hr = interop->appDevice->OpenSharedResource(handle, IID_PPV_ARGS(&state->appTextures[i]));
+            }
+        }
+        if (FAILED(hr) || !state->appTextures[i])
+        {
+            spdlog::error("OXRSys: opening a swapchain image on the app's D3D11 device failed (0x{:08x})",
+                          static_cast<uint32_t>(hr));
+            return nullptr;
+        }
+    }
+    interop->context->Flush();
+
+    state->eyeFormat = DxgiEyeFormat(state->typeless);
+    if (state->eyeFormat != DXGI_FORMAT_UNKNOWN)
+    {
+        state->eyes.resize(state->arraySize);
+    }
+
+    textures.assign(imageCount, nullptr);
+    for (uint32_t i = 0; i < imageCount; ++i)
+    {
+        textures[i] = state->appTextures[i].Get();
+    }
+    return state;
+}
+
+void* Win32InteropD3D11Device(const GraphicsContext& context)
+{
+    if (context.api == GraphicsApi::D3D11)
+    {
+        std::shared_ptr<D3D11Interop> interop = GetD3D11Interop(context.d3d11);
+        return interop ? interop->d3d.Get() : nullptr;
+    }
+    std::shared_ptr<Interop> interop = GetInterop(context.vulkan);
     return interop ? interop->d3d.Get() : nullptr;
 }
 

@@ -82,6 +82,7 @@ endif()
 
 if(WIN32)
     target_compile_definitions(oxrsys_runtime PRIVATE
+        XR_USE_GRAPHICS_API_D3D11
         NOMINMAX
         WIN32_LEAN_AND_MEAN
         _CRT_SECURE_NO_WARNINGS

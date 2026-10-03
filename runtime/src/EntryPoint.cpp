@@ -11,6 +11,13 @@
 #endif
 #endif
 
+#ifdef XR_USE_GRAPHICS_API_D3D11
+#include <d3d11.h>
+#ifdef GetCurrentTime
+#undef GetCurrentTime // winbase.h macro; clashes with Session::GetCurrentTime
+#endif
+#endif
+
 #include <openxr/openxr_platform.h>
 
 #include "Runtime.h"
@@ -254,6 +261,9 @@ static std::vector<ExtensionInfo> GetSupportedExtensionInfos()
     extensions.push_back({XR_KHR_VULKAN_ENABLE_EXTENSION_NAME, XR_KHR_vulkan_enable_SPEC_VERSION});
     extensions.push_back({XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME, XR_KHR_vulkan_enable2_SPEC_VERSION});
 #endif
+#ifdef XR_USE_GRAPHICS_API_D3D11
+    extensions.push_back({XR_KHR_D3D11_ENABLE_EXTENSION_NAME, XR_KHR_D3D11_enable_SPEC_VERSION});
+#endif
     return extensions;
 }
 
@@ -335,6 +345,12 @@ static const char* ExtensionForFunctionName(const char* functionName)
         std::strcmp(functionName, "xrGetVulkanGraphicsRequirements2KHR") == 0)
     {
         return XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME;
+    }
+#endif
+#ifdef XR_USE_GRAPHICS_API_D3D11
+    if (std::strcmp(functionName, "xrGetD3D11GraphicsRequirementsKHR") == 0)
+    {
+        return XR_KHR_D3D11_ENABLE_EXTENSION_NAME;
     }
 #endif
     return nullptr;
@@ -861,6 +877,9 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrCreateSession(
 #ifdef XR_USE_GRAPHICS_API_VULKAN
     const XrGraphicsBindingVulkanKHR* vulkanBinding = nullptr;
 #endif
+#ifdef XR_USE_GRAPHICS_API_D3D11
+    const XrGraphicsBindingD3D11KHR* d3d11Binding = nullptr;
+#endif
     const XrBaseInStructure* next = reinterpret_cast<const XrBaseInStructure*>(createInfo->next);
     while (next)
     {
@@ -892,6 +911,20 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrCreateSession(
             }
             vulkanBinding = reinterpret_cast<const XrGraphicsBindingVulkanKHR*>(next);
             if (!inst->HasQueriedVulkanGraphicsRequirements())
+            {
+                return XR_ERROR_GRAPHICS_REQUIREMENTS_CALL_MISSING;
+            }
+        }
+#endif
+#ifdef XR_USE_GRAPHICS_API_D3D11
+        if (next->type == XR_TYPE_GRAPHICS_BINDING_D3D11_KHR)
+        {
+            if (!inst->IsExtensionEnabled(XR_KHR_D3D11_ENABLE_EXTENSION_NAME))
+            {
+                return XR_ERROR_VALIDATION_FAILURE;
+            }
+            d3d11Binding = reinterpret_cast<const XrGraphicsBindingD3D11KHR*>(next);
+            if (!inst->HasQueriedD3D11GraphicsRequirements())
             {
                 return XR_ERROR_GRAPHICS_REQUIREMENTS_CALL_MISSING;
             }
@@ -941,6 +974,24 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrCreateSession(
             inst, GraphicsContext::Vulkan(vulkanContext, gMetalDevice));
         *session = reinterpret_cast<XrSession>(gSession->GetHandle());
         spdlog::info("OXRSys: Session created with Vulkan binding");
+        return XR_SUCCESS;
+    }
+#endif
+
+#ifdef XR_USE_GRAPHICS_API_D3D11
+    if (d3d11Binding)
+    {
+        D3D11GraphicsContext d3d11Context = {};
+        d3d11Context.device = d3d11Binding->device;
+        std::shared_ptr<void> interop = Win32CreateD3D11Interop(d3d11Context);
+        if (!interop)
+        {
+            return XR_ERROR_GRAPHICS_DEVICE_INVALID;
+        }
+        gGraphicsApi = GraphicsApi::D3D11;
+        gSession = std::make_unique<Session>(inst, GraphicsContext::D3D11(d3d11Context), std::move(interop));
+        *session = reinterpret_cast<XrSession>(gSession->GetHandle());
+        spdlog::info("OXRSys: Session created with D3D11 binding");
         return XR_SUCCESS;
     }
 #endif
@@ -1106,6 +1157,14 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrEnumerateSwapchainFormats(
         formatCount = static_cast<uint32_t>(win32VulkanFormats.size());
     }
 #endif
+#endif
+#ifdef XR_USE_GRAPHICS_API_D3D11
+    static const std::vector<int64_t> d3d11Formats = Win32SupportedD3D11Formats();
+    if (gGraphicsApi == GraphicsApi::D3D11)
+    {
+        supportedFormats = d3d11Formats.data();
+        formatCount = static_cast<uint32_t>(d3d11Formats.size());
+    }
 #endif
 
     if (formatCountOutput == nullptr)
@@ -3657,6 +3716,47 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrCreateVulkanDeviceKHR(
 #endif // XR_USE_GRAPHICS_API_VULKAN
 
 // ============================================================================
+// D3D11 extension (XR_KHR_D3D11_enable)
+// ============================================================================
+
+#ifdef XR_USE_GRAPHICS_API_D3D11
+static XRAPI_ATTR XrResult XRAPI_CALL OxrGetD3D11GraphicsRequirementsKHR(
+    XrInstance instance, XrSystemId systemId, XrGraphicsRequirementsD3D11KHR* graphicsRequirements)
+{
+    Instance* inst = GetInstance(instance);
+    if (!inst)
+    {
+        return XR_ERROR_HANDLE_INVALID;
+    }
+    if (!inst->IsSystemIdValid(systemId))
+    {
+        return XR_ERROR_SYSTEM_INVALID;
+    }
+    if (graphicsRequirements == nullptr || graphicsRequirements->type != XR_TYPE_GRAPHICS_REQUIREMENTS_D3D11_KHR)
+    {
+        return XR_ERROR_VALIDATION_FAILURE;
+    }
+    if (!inst->IsExtensionEnabled(XR_KHR_D3D11_ENABLE_EXTENSION_NAME))
+    {
+        return XR_ERROR_FUNCTION_UNSUPPORTED;
+    }
+
+    uint8_t luid[sizeof(LUID)] = {};
+    if (!Win32GetRuntimeAdapterLuid(luid))
+    {
+        spdlog::error("OXRSys: no hardware DXGI adapter found");
+        return XR_ERROR_RUNTIME_FAILURE;
+    }
+    std::memcpy(&graphicsRequirements->adapterLuid, luid, sizeof(LUID));
+    graphicsRequirements->minFeatureLevel = D3D_FEATURE_LEVEL_11_0;
+    inst->MarkD3D11GraphicsRequirementsQueried();
+
+    spdlog::info("OXRSys: D3D11 graphics requirements provided");
+    return XR_SUCCESS;
+}
+#endif
+
+// ============================================================================
 // Metal extension
 // ============================================================================
 
@@ -3868,6 +3968,10 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetInstanceProcAddr(
     DISPATCH(xrCreateVulkanDeviceKHR, OxrCreateVulkanDeviceKHR)
     DISPATCH(xrGetVulkanGraphicsDevice2KHR, OxrGetVulkanGraphicsDevice2KHR)
     DISPATCH(xrGetVulkanGraphicsRequirements2KHR, OxrGetVulkanGraphicsRequirements2KHR)
+#endif
+
+#ifdef XR_USE_GRAPHICS_API_D3D11
+    DISPATCH(xrGetD3D11GraphicsRequirementsKHR, OxrGetD3D11GraphicsRequirementsKHR)
 #endif
 
     spdlog::warn("OXRSys: Unsupported function requested: {}", name);

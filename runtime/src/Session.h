@@ -24,8 +24,9 @@ public:
     // Metal session
     Session(Instance* instance, void* metalDevice, void* metalCommandQueue = nullptr);
 
-    // Vulkan session (metalDevice for Renderer, Vulkan handles for swapchains)
-    Session(Instance* instance, const GraphicsContext& graphicsContext);
+    // Vulkan or D3D11 session; platformInterop keeps the binding's interop state alive with it.
+    Session(Instance* instance, const GraphicsContext& graphicsContext,
+            std::shared_ptr<void> platformInterop = {});
     ~Session();
 
     uint64_t GetHandle() const
@@ -116,6 +117,7 @@ private:
     uint64_t handle_ = 0;
     Instance* instance_;
     GraphicsContext graphicsContext_ = {};
+    std::shared_ptr<void> platformInterop_ = {};
 
     XrSessionState state_ = XR_SESSION_STATE_IDLE;
     bool running_ = false;

@@ -2,7 +2,7 @@
 
 ## Overview
 
-OXRSys Runtime is a cross-platform OpenXR runtime in progress. macOS is the mature path, Linux is being added through Vulkan + PyroWave scaffolding, and Windows renders Vulkan apps into shared D3D11 textures and streams them with PyroWave. Shared platform, config, status, and socket helpers are kept portable so platform-specific backends can be added without spreading OS calls through the runtime. The runtime is discovered by the OpenXR loader through the generated `oxrsys-runtime.json` manifest.
+OXRSys Runtime is a cross-platform OpenXR runtime in progress. macOS is the mature path, Linux is being added through Vulkan + PyroWave scaffolding, and Windows renders Vulkan and Direct3D 11 apps into shared D3D11 textures and streams them with PyroWave. A D3D11 app's swapchain images are typeless textures created on the runtime's device on the app's adapter and opened on the app's device; at `xrEndFrame` the runtime signals a shared fence on the app's immediate context and its own context waits on it before staging the eyes. Shared platform, config, status, and socket helpers are kept portable so platform-specific backends can be added without spreading OS calls through the runtime. The runtime is discovered by the OpenXR loader through the generated `oxrsys-runtime.json` manifest.
 
 ## Repository Layout
 

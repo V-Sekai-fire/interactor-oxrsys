@@ -191,13 +191,13 @@ bool VideoEncoder::Initialize(uint32_t width, uint32_t height, uint32_t fps,
     inFlightFrameCount_.store(0);
     frameNumberCounter_.store(0);
 
-    if (graphicsContext.api != GraphicsApi::Vulkan)
+    if (graphicsContext.api != GraphicsApi::Vulkan && graphicsContext.api != GraphicsApi::D3D11)
     {
         return false;
     }
 
     auto state = std::make_unique<Win32PyroWaveState>();
-    auto* baseDevice = static_cast<ID3D11Device*>(Win32InteropD3D11Device(graphicsContext.vulkan));
+    auto* baseDevice = static_cast<ID3D11Device*>(Win32InteropD3D11Device(graphicsContext));
     ComPtr<ID3D11DeviceContext> baseContext;
     if (baseDevice == nullptr || FAILED(baseDevice->QueryInterface(IID_PPV_ARGS(&state->device))))
     {
@@ -214,8 +214,9 @@ bool VideoEncoder::Initialize(uint32_t width, uint32_t height, uint32_t fps,
         return false;
     }
 
+    // Encode on the adapter the eyes are staged on, which is the app's.
     pyrowave_luid luid = {};
-    if (!Win32GetRuntimeAdapterLuid(luid.luid) ||
+    if (!Win32DeviceAdapterLuid(state->device.Get(), luid.luid) ||
         pyrowave_create_device_by_compat(0, 0, nullptr, nullptr, &luid, &state->device_) != PYROWAVE_SUCCESS)
     {
         CloseHandle(fenceHandle);

@@ -304,6 +304,16 @@ bool Instance::HasQueriedVulkanGraphicsRequirements() const
     return vulkanGraphicsRequirementsQueried_;
 }
 
+void Instance::MarkD3D11GraphicsRequirementsQueried()
+{
+    d3d11GraphicsRequirementsQueried_ = true;
+}
+
+bool Instance::HasQueriedD3D11GraphicsRequirements() const
+{
+    return d3d11GraphicsRequirementsQueried_;
+}
+
 bool Instance::IsViewConfigurationTypeSupported(XrViewConfigurationType viewConfigurationType) const
 {
     return viewConfigurationType == XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;

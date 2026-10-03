@@ -67,7 +67,7 @@ Key outputs in the selected build directory. With the default build these are un
 All third-party C++ dependencies are fetched through CMake `FetchContent`.
 Linux additionally requires system/toolchain packages for Vulkan headers, libuuid, and pkg-config. The Linux runtime encodes its stream with PyroWave, which FetchContent builds with its Granite subset as a static library; `scripts/linux_check_runtime_linkage.sh <liboxrsys-runtime.so> --self-test` checks that the runtime links no FFmpeg library.
 
-Windows builds with MSVC through `scripts/windows_build.ps1`. Vulkan apps render into shared D3D11 textures and the runtime streams them with PyroWave, linked statically.
+Windows builds with MSVC through `scripts/windows_build.ps1`. Vulkan and Direct3D 11 apps render into shared D3D11 textures and the runtime streams them with PyroWave, linked statically.
 
 ## Versioning
 
