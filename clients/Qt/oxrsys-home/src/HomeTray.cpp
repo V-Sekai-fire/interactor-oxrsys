@@ -7,7 +7,9 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -32,6 +34,40 @@ const char* const kOpenXrKey = "HKEY_LOCAL_MACHINE\\SOFTWARE\\Khronos\\OpenXR\\1
 QString installedRuntimeManifest()
 {
     return QDir::toNativeSeparators(qEnvironmentVariable("LOCALAPPDATA") + "/OXRSys/runtime/oxrsys-runtime.json");
+}
+
+// Copies a packaged tree into the per-user install, file by file, skipping files already equal in
+// size and time; a file an app still has loaded is left as it is.
+void copyTree(const QString& from, const QString& to)
+{
+    QDirIterator it(from, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext())
+    {
+        const QFileInfo source(it.next());
+        const QString target = to + "/" + QDir(from).relativeFilePath(source.filePath());
+        const QFileInfo existing(target);
+        if (existing.exists() && existing.size() == source.size() && existing.lastModified() == source.lastModified())
+        {
+            continue;
+        }
+        QDir().mkpath(QFileInfo(target).absolutePath());
+        QFile::remove(target);
+        QFile::copy(source.filePath(), target);
+    }
+}
+
+// An MSIX ships the runtime and driver beside Home, but Windows will not load a packaged DLL into
+// another app's process, so they are copied to the same per-user folder windows_build.ps1 -Install uses.
+void installPackagedFiles()
+{
+    const QString package = QDir::cleanPath(QCoreApplication::applicationDirPath() + "/..");
+    if (!QFileInfo::exists(package + "/runtime/oxrsys-runtime.json"))
+    {
+        return;
+    }
+    const QString base = qEnvironmentVariable("LOCALAPPDATA") + "/OXRSys";
+    copyTree(package + "/runtime", base + "/runtime");
+    copyTree(package + "/driver/oxrsys", base + "/driver/oxrsys");
 }
 
 QString installedDriverFolder()
@@ -113,6 +149,7 @@ HomeTray::HomeTray(QString runtimeStatusPath, QString logDirectory, std::functio
     , runtimeStatusPath_(std::move(runtimeStatusPath))
     , logDirectory_(std::move(logDirectory))
 {
+    installPackagedFiles();
     menu_ = new QMenu();
     status_ = menu_->addAction("Idle");
     status_->setEnabled(false);

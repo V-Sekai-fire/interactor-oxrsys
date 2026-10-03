@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Identity Publisher must equal the signing certificate's subject; Version is four-part.
+     scripts/windows_package_msix.ps1 fills in both. -->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+  IgnorableNamespaces="uap rescap desktop6">
+
+  <Identity Name="V-Sekai.OXRSys" Publisher="CN=v-sekai" Version="1.2.0.0" ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>OXRSys</DisplayName>
+    <PublisherDisplayName>V-Sekai</PublisherDisplayName>
+    <Logo>assets\StoreLogo.png</Logo>
+    <Description>OpenXR runtime that streams OpenXR apps to headsets over PyroWave, with its Home app and desktop simulator.</Description>
+    <!-- Home copies the runtime to %LOCALAPPDATA%\OXRSys and keeps settings other apps read, so writes are not virtualized. -->
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
+    <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="unvirtualizedResources" />
+  </Capabilities>
+
+  <Applications>
+    <Application Id="Home" Executable="home\oxrsys-home.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="OXRSys Home" Description="Pick the OpenXR runtime, launch apps, and watch the stream"
+        BackgroundColor="transparent" Square150x150Logo="assets\Square150x150Logo.png" Square44x44Logo="assets\Square44x44Logo.png" />
+    </Application>
+    <Application Id="Simulator" Executable="simulator\oxrsys-simulator.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="OXRSys Simulator" Description="Desktop headset client for the OXRSys stream"
+        BackgroundColor="transparent" Square150x150Logo="assets\Square150x150Logo.png" Square44x44Logo="assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+</Package>
