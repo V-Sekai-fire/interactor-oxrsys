@@ -46,9 +46,15 @@ constexpr uint32_t kEyeHeight = 1680;
 constexpr float kRefreshHz = 90.0f;
 constexpr float kIpdMeters = 0.063f;
 constexpr char kSettingsSection[] = "driver_oxrsys";
-// Our own tracking universe: room setup saved for another system's universe would move our floor,
-// whose poses already put it at y = 0. The value spells OXRS.
+// Our own tracking universe, and its room setup supplied by the driver, which SteamVR prefers over a
+// saved one: the poses already put the floor at y = 0, so the standing transform is the identity and
+// no calibration saved on the desk can move the floor. The id spells OXRS.
 constexpr uint64_t kUniverseId = 0x4F585253;
+constexpr char kChaperoneJson[] =
+    R"({"jsonid":"chaperone_info","version":5,"universes":[{"universeID":"1331188307",)"
+    R"("standing":{"translation":[0,0,0],"yaw":0},"seated":{"translation":[0,0,0],"yaw":0},"play_area":[2,2],)"
+    R"("collision_bounds":[[[-1,0,-1],[-1,2.4,-1],[-1,2.4,1],[-1,0,1]],[[-1,0,1],[-1,2.4,1],[1,2.4,1],[1,0,1]],)"
+    R"([[1,0,1],[1,2.4,1],[1,2.4,-1],[1,0,-1]],[[1,0,-1],[1,2.4,-1],[-1,2.4,-1],[-1,0,-1]]]}]})";
 
 IVRServerDriverHost* gHost = nullptr;
 IVRProperties* gProperties = nullptr;
@@ -760,6 +766,7 @@ public:
         WriteProperty(c, Prop_DriverDirectModeSendsVsyncEvents_Bool, true, k_unBoolPropertyTag);
         WriteProperty(c, Prop_IsOnDesktop_Bool, false, k_unBoolPropertyTag);
         WriteProperty(c, Prop_CurrentUniverseId_Uint64, kUniverseId, k_unUint64PropertyTag);
+        WriteString(c, Prop_DriverProvidedChaperoneJson_String, kChaperoneJson);
         WriteProperty(c, Prop_GraphicsAdapterLuid_Uint64, direct_.AdapterLuid(), k_unUint64PropertyTag);
         // The headset's button, as on a headset whose button selects by gaze when no controller is held.
         WriteString(c, Prop_ControllerType_String, "oxrsys_hmd");

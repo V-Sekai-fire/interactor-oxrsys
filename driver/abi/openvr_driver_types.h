@@ -93,6 +93,7 @@ enum ETrackedDeviceProperty
     Prop_IsOnDesktop_Bool = 2007,
     Prop_DriverDirectModeSendsVsyncEvents_Bool = 2043,
     Prop_GraphicsAdapterLuid_Uint64 = 2045,
+    Prop_DriverProvidedChaperoneJson_String = 2095,
     Prop_InputProfilePath_String = 1037,
     Prop_NamedIconPathDeviceOff_String = 5001,
     Prop_NamedIconPathDeviceSearching_String = 5002,
