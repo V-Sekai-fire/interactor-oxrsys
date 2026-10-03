@@ -52,9 +52,8 @@ sudo dnf install cmake ninja-build gcc-c++ pkgconf-pkg-config \
   vulkan-headers vulkan-loader-devel libuuid-devel qt6-qtbase-devel android-tools
 ```
 
-The runtime does not use FFmpeg. The Qt simulator's optional video preview still decodes
-H.265 through FFmpeg when its development libraries are installed, so it does not show the
-Linux runtime's CineForm stream.
+Nothing uses FFmpeg. The runtime streams PyroWave, and the Qt simulator decodes it on the GPU
+with a Vulkan 1.3 device.
 
 ## Android SDK And NDK
 

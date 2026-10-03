@@ -7,7 +7,7 @@ client, and Linux-first Qt frontends.
 The repository also includes a native SwiftUI macOS Home app and a Qt Home app for compatible app
 launching, runtime selection, runtime configuration, and runtime registration workflows.
 
-**Current state:** Metal/core runtime, Vulkan interop, Linux Vulkan/CineForm scaffolding,
+**Current state:** Metal/core runtime, Vulkan interop, Linux Vulkan/PyroWave scaffolding,
 typed internal graphics/frame plumbing, release-time Metal streaming snapshots,
 portable platform/socket helpers,
 controller and hand input paths, loader-backed
@@ -49,9 +49,9 @@ adding a client-side cap.
 The Home app can enable a Developer tab from its Settings tab, open the macOS simulator in a
 same-process window backed by the shared `OXRSysSimulator` Swift package, and show live runtime
 streaming statistics from the existing telemetry path. The Qt Home Developer tab opens the shared
-Qt simulator widget in a dedicated window with UDP video preview, mouse-driven synthetic head
-tracking, simulator-owned vertical FOV sent through tracking eye-FOV metadata, explicit
-FFmpeg-disabled fallback, frame-loss/FEC status, and keyframe recovery requests.
+Qt simulator widget in a dedicated window with a GPU PyroWave video preview, mouse-driven
+synthetic head tracking, simulator-owned vertical FOV sent through tracking eye-FOV metadata,
+frame-loss/FEC status, and keyframe recovery requests.
 The macOS package helper builds the runtime dylib and Home app into one local folder with a complete
 `runtime/` directory; the distribution helper signs that package, creates a combined archive, and can
 submit that archive for notarization with Apple Developer account credentials.
@@ -66,7 +66,7 @@ As of March 17, 2026, the pinned non-interactive OpenXR-CTS baseline is fully gr
 - **Always build and verify before declaring success** — run the macOS build + tests and/or Android build as appropriate before saying everything works
 - **Always update `README.md`, `AGENTS.md`, and the relevant files in `docs/` when making significant project changes**
 - Keep SwiftUI Home and Qt Home companion behavior in sync when changing shared Home workflows; only diverge for frontend-specific changes or when the user explicitly asks for a feature to be limited to one frontend.
-- Core C++ dependencies, including the CineForm SDK the Linux runtime encodes with and PyroWave's Metal port the macOS runtime can encode with, are fetched via CMake FetchContent (the Apple simulator's `CPyroWave` target is a copy of the PyroWave decoder at the same commit, since Swift packages cannot fetch it); Qt, Vulkan SDKs, and platform SDKs are system/toolchain dependencies. FFmpeg is only an optional dependency of the Qt simulator's preview; the runtime does not link it.
+- Core C++ dependencies, including PyroWave's C API and its Granite subset, which the Windows and Linux runtimes and the Qt simulator stream with, and PyroWave's Metal port the macOS runtime can encode with, are fetched via CMake FetchContent (the Apple simulator's `CPyroWave` target is a copy of the PyroWave decoder at the same commit, since Swift packages cannot fetch it); Qt, Vulkan SDKs, and platform SDKs are system/toolchain dependencies. Nothing links FFmpeg.
 - Product versions are centralized in `config/OXRSysVersion.xcconfig`; do not hardcode
   marketing versions or build numbers in CMake, Xcode, Gradle, or native client code.
 - Commit messages must read naturally and must not mention Codex or include `[codex]`.

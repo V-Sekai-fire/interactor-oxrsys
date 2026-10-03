@@ -887,7 +887,7 @@ void SimulatorWidget::updatePreviewStatus()
 
     QString status;
 #if !OXRSYS_QT_SIMULATOR_HAS_VIDEO
-    status = "Video preview unavailable: FFmpeg support was not enabled";
+    status = "Video preview unavailable";
 #else
     if (state_ == State::Streaming && videoFramesDecoded_ == 0)
     {

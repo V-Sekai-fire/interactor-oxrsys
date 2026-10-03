@@ -65,9 +65,9 @@ Key outputs in the selected build directory. With the default build these are un
 - `compile_commands.json` symlinked at the project root for editor integration
 
 All third-party C++ dependencies are fetched through CMake `FetchContent`.
-Linux additionally requires system/toolchain packages for Vulkan headers, libuuid, and pkg-config. The Linux runtime encodes its stream with the CineForm SDK, which FetchContent builds as a static library; `scripts/linux_check_runtime_linkage.sh <liboxrsys-runtime.so> --self-test` checks that the runtime links no FFmpeg library.
+Linux additionally requires system/toolchain packages for Vulkan headers, libuuid, and pkg-config. The Linux runtime encodes its stream with PyroWave, which FetchContent builds with its Granite subset as a static library; `scripts/linux_check_runtime_linkage.sh <liboxrsys-runtime.so> --self-test` checks that the runtime links no FFmpeg library.
 
-Windows builds with MSVC through `scripts/windows_build.ps1`. Vulkan apps render into shared D3D11 textures and the runtime streams them with NVENC AV1, loaded from the NVIDIA driver at run time.
+Windows builds with MSVC through `scripts/windows_build.ps1`. Vulkan apps render into shared D3D11 textures and the runtime streams them with PyroWave, linked statically.
 
 ## Versioning
 
@@ -238,9 +238,9 @@ ctest --test-dir build-qt --output-on-failure
 ```
 
 The standalone targets are `oxrsys-home` and `oxrsys-simulator`. The Qt Home Developer tab opens
-the same shared simulator widget in a dedicated window. FFmpeg development libraries are optional;
-when they are found at configure time, the Qt simulator decodes video into the preview surface,
-otherwise it stays in tracking-only preview mode with an explicit status message. See
+the same shared simulator widget in a dedicated window. The Qt simulator decodes the PyroWave
+stream on the GPU and presents it through a Vulkan swapchain on the preview surface; the Qt
+frontends are not built on macOS, where the Swift simulator decodes PyroWave instead. See
 [qt-home.md](platforms/qt-home.md) for Linux registration/install behavior.
 
 ### Unity Editor And macOS Player Helpers

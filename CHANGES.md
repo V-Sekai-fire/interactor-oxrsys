@@ -8,8 +8,8 @@ This file tracks user-facing, integration-facing, and runtime-relevant changes f
 
 - Added Linux-first Qt frontends under `clients/Qt/`, including Qt Home, a standalone Qt simulator, and a reusable simulator widget.
 - Added Qt Home support for compatible app launching, selected-runtime registration on Linux, runtime TOML editing, runtime activity/status display, custom ADB selection, USB reverse mapping setup, and asynchronous transport readiness checks.
-- Added Qt simulator video preview with FFmpeg when available, tracking-only fallback when FFmpeg is unavailable, mouse-driven synthetic head tracking, frame-loss/FEC status, and keyframe recovery requests.
-- Added Linux Vulkan/FFmpeg runtime scaffolding, portable platform helpers, portable socket helpers, and platform-specific config/state directory support.
+- Added Qt simulator video preview, decoded on the GPU with PyroWave and presented through a Vulkan swapchain, with mouse-driven synthetic head tracking, frame-loss/FEC status, and keyframe recovery requests.
+- Added Linux Vulkan runtime scaffolding, portable platform helpers, portable socket helpers, and platform-specific config/state directory support.
 - Added first-pass Windows layout and portability scaffolding while keeping the Windows runtime backend non-gating for this release.
 - Added canonical shared protocol headers under `common/protocol/include/oxrsys/protocol/`.
 - Added centralized product versioning in `config/OXRSysVersion.xcconfig` for CMake, Xcode, and Android consumers.
@@ -31,7 +31,8 @@ This file tracks user-facing, integration-facing, and runtime-relevant changes f
 
 ### Changed
 
-- Changed the Linux runtime's streaming encoder from FFmpeg to the CineForm SDK (Apache-2.0 OR MIT, fetched with FetchContent). The runtime no longer links FFmpeg; samples are intra-only and tagged `VideoCodec::CineForm`. No headset client decodes CineForm yet.
+- Changed the Windows and Linux streaming encoder to PyroWave's Vulkan C API (MIT, fetched with FetchContent with its Granite subset and linked statically). Nothing links FFmpeg; frames are intra-only and tagged `VideoCodec::PyroWave`. The Linux encoder sends a black frame until it reads the app's swapchain images.
+- Changed the Qt simulator to drop frames only when their packets are lost: parity trailing a delivered frame no longer counts as a drop or asks for a keyframe, and the video socket's receive buffer is set after bind, where it takes effect.
 - Moved the repository toward the OXRSys cross-platform layout, including `clients/Android/android-vr/`, `clients/Apple/common/`, and `clients/Qt/`.
 - Changed the runtime graphics plumbing to use typed `GraphicsContext` and `FrameSource` data across sessions, swapchains, streaming, and encoders.
 - Kept Vulkan loader usage app-owned: the runtime resolves Vulkan entry points from the application-provided dispatch path or already-loaded process symbols without directly linking or loading the Vulkan loader.
