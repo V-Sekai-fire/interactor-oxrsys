@@ -102,7 +102,6 @@ private:
     bool decodeVideoFrame(const AssembledVideoFrame& frame);
 #endif
     void setMouseCaptured(bool captured, const char* reason);
-    void toggleMouseCaptured(const char* reason);
     void recentreCapturedCursor();
     bool focusStaysInside() const;
     void accumulateMouseDelta(const QPointF& delta);
@@ -153,6 +152,8 @@ private:
     int captureMoves_ = 0;
     int captureRecentres_ = 0;
     QSet<int> pressedKeys_;
+    QSet<int> pressedSinceSend_;
+    QSet<int> releaseAfterSend_;
     QPointF lastMousePosition_;
     QPointF pendingMouseDelta_;
     bool hasLastMousePosition_ = false;

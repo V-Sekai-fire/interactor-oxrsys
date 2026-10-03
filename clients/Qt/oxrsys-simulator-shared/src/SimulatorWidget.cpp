@@ -379,7 +379,7 @@ private:
 
     static QRectF captureBadgeRect(const QRectF& bounds)
     {
-        return QRectF(bounds.right() - 158.0, bounds.top() + 14.0, 144.0, 32.0);
+        return QRectF(bounds.right() - 234.0, bounds.top() + 14.0, 220.0, 32.0);
     }
 
     static QRectF videoBadgeRect(const QRectF& bounds)
@@ -422,7 +422,7 @@ private:
         painter.setPen(Qt::NoPen);
         painter.drawRoundedRect(badge, 8.0, 8.0);
         painter.setPen(QColor(242, 244, 248));
-        painter.drawText(badge, Qt::AlignCenter, mouseCaptured_ ? "Mouse captured" : "Mouse free");
+        painter.drawText(badge, Qt::AlignCenter, mouseCaptured_ ? "Mouse captured, right-click releases" : "Mouse free");
     }
 
     void drawVideoBadge(QPainter& painter, const QRectF& badge) const
@@ -793,6 +793,12 @@ void SimulatorWidget::sendTrackingSample()
 
     oxr::protocol::TrackingPacket packet = {};
     fillTrackingPacket(packet);
+    for (const int key : releaseAfterSend_)
+    {
+        pressedKeys_.remove(key);
+    }
+    releaseAfterSend_.clear();
+    pressedSinceSend_.clear();
 
     trackingSocket_->writeDatagram(
         reinterpret_cast<const char*>(&packet),
@@ -812,39 +818,46 @@ void SimulatorWidget::buildUi()
                   "QPushButton { padding: 6px 12px; }"
                   "QLabel { color: #f2f4f8; }");
 
-    auto* rootLayout = new QVBoxLayout(this);
-    rootLayout->setContentsMargins(18, 18, 18, 18);
+    // Panels in a left column and the view on the right: the eye is nearly square, so a wide window
+    // gives the view its full height and the panels the width it cannot use.
+    auto* rootLayout = new QHBoxLayout(this);
+    rootLayout->setContentsMargins(14, 14, 14, 14);
     rootLayout->setSpacing(14);
 
-    auto* headerLayout = new QHBoxLayout();
-    auto* titleLayout = new QVBoxLayout();
-    titleLabel_ = new QLabel("OXRSys Simulator", this);
-    titleLabel_->setStyleSheet("font-size: 22px; font-weight: 700;");
-    hintLabel_ = makeSecondaryLabel("Synthetic desktop client: discover a runtime, connect, and stream head tracking.", this);
-    titleLayout->addWidget(titleLabel_);
-    titleLayout->addWidget(hintLabel_);
-    headerLayout->addLayout(titleLayout, 1);
+    auto* side = new QWidget(this);
+    side->setFixedWidth(340);
+    auto* sideLayout = new QVBoxLayout(side);
+    sideLayout->setContentsMargins(0, 0, 0, 0);
+    sideLayout->setSpacing(10);
 
-    statusLabel_ = new QLabel(this);
-    statusLabel_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    titleLabel_ = new QLabel("OXRSys Simulator", side);
+    titleLabel_->setStyleSheet("font-size: 20px; font-weight: 700;");
+    sideLayout->addWidget(titleLabel_);
+    hintLabel_ = makeSecondaryLabel("Synthetic desktop client: discover a runtime, connect, and stream head tracking.", side);
+    sideLayout->addWidget(hintLabel_);
+    statusLabel_ = new QLabel(side);
+    statusLabel_->setWordWrap(true);
     statusLabel_->setStyleSheet("font-weight: 600; color: #7ee787;");
-    headerLayout->addWidget(statusLabel_);
-    rootLayout->addLayout(headerLayout);
+    sideLayout->addWidget(statusLabel_);
 
-    previewWidget_ = new SimulatorPreviewWidget(this);
-    previewWidget_->installEventFilter(this);
-    rootLayout->addWidget(previewWidget_, 2);
+    auto* buttonLayout = new QHBoxLayout();
+    searchButton_ = new QPushButton("Search", side);
+    connectButton_ = new QPushButton("Connect", side);
+    disconnectButton_ = new QPushButton("Disconnect", side);
+    buttonLayout->addWidget(searchButton_);
+    buttonLayout->addWidget(connectButton_);
+    buttonLayout->addWidget(disconnectButton_);
+    sideLayout->addLayout(buttonLayout);
 
-    auto* detailsLayout = new QHBoxLayout();
-    auto* serverPanel = makePanel(this);
+    auto* serverPanel = makePanel(side);
     auto* serverLayout = new QVBoxLayout(serverPanel);
     serverLayout->addWidget(makeSecondaryLabel("Runtime", serverPanel));
     serverLabel_ = new QLabel(serverPanel);
     serverLabel_->setWordWrap(true);
     serverLayout->addWidget(serverLabel_);
-    detailsLayout->addWidget(serverPanel, 2);
+    sideLayout->addWidget(serverPanel);
 
-    auto* telemetryPanel = makePanel(this);
+    auto* telemetryPanel = makePanel(side);
     auto* telemetryLayout = new QVBoxLayout(telemetryPanel);
     telemetryLayout->addWidget(makeSecondaryLabel("Tracking", telemetryPanel));
     telemetrySparks_ = new SparklineStrip({"tracking", "video packets", "frames", "drops", "fec", "decode errors"}, telemetryPanel);
@@ -852,9 +865,9 @@ void SimulatorWidget::buildUi()
     telemetryLabel_ = new QLabel(telemetryPanel);
     telemetryLabel_->setWordWrap(true);
     telemetryLayout->addWidget(telemetryLabel_);
-    detailsLayout->addWidget(telemetryPanel, 1);
+    sideLayout->addWidget(telemetryPanel);
 
-    auto* simulatorPanel = makePanel(this);
+    auto* simulatorPanel = makePanel(side);
     auto* simulatorLayout = new QVBoxLayout(simulatorPanel);
     simulatorLayout->addWidget(makeSecondaryLabel("Simulator", simulatorPanel));
     auto* fovRow = new QHBoxLayout();
@@ -869,18 +882,13 @@ void SimulatorWidget::buildUi()
     fovRow->addWidget(simulatorFovSlider_, 1);
     fovRow->addWidget(simulatorFovValueLabel_);
     simulatorLayout->addLayout(fovRow);
-    detailsLayout->addWidget(simulatorPanel, 1);
-    rootLayout->addLayout(detailsLayout, 1);
+    sideLayout->addWidget(simulatorPanel);
+    sideLayout->addStretch(1);
+    rootLayout->addWidget(side);
 
-    auto* buttonLayout = new QHBoxLayout();
-    searchButton_ = new QPushButton("Search", this);
-    connectButton_ = new QPushButton("Connect", this);
-    disconnectButton_ = new QPushButton("Disconnect", this);
-    buttonLayout->addWidget(searchButton_);
-    buttonLayout->addWidget(connectButton_);
-    buttonLayout->addWidget(disconnectButton_);
-    buttonLayout->addStretch();
-    rootLayout->addLayout(buttonLayout);
+    previewWidget_ = new SimulatorPreviewWidget(this);
+    previewWidget_->installEventFilter(this);
+    rootLayout->addWidget(previewWidget_, 1);
 }
 
 void SimulatorWidget::setState(State state, const QString& status)
@@ -911,13 +919,25 @@ bool SimulatorWidget::eventFilter(QObject* watched, QEvent* event)
             hasLastMousePosition_ = true;
             if (mouseEvent->button() == Qt::RightButton)
             {
-                toggleMouseCaptured("right click");
+                setMouseCaptured(!mouseCaptured_, "right click");
+                event->accept();
+                return true;
+            }
+            if (mouseEvent->button() == Qt::MiddleButton)
+            {
+                setKeyPressed(oxrsys::qt_simulator::HeadsetButtonKey, true);
                 event->accept();
                 return true;
             }
             if (mouseEvent->button() == Qt::LeftButton && !mouseCaptured_)
             {
                 setMouseCaptured(true, "left click");
+                event->accept();
+                return true;
+            }
+            if (mouseEvent->button() == Qt::LeftButton)
+            {
+                setKeyPressed(oxrsys::qt_simulator::TriggerMouseKey, true);
                 event->accept();
                 return true;
             }
@@ -928,6 +948,14 @@ bool SimulatorWidget::eventFilter(QObject* watched, QEvent* event)
             auto* mouseEvent = static_cast<QMouseEvent*>(event);
             lastMousePosition_ = mouseEvent->position();
             hasLastMousePosition_ = true;
+            if (mouseEvent->button() == Qt::MiddleButton)
+            {
+                setKeyPressed(oxrsys::qt_simulator::HeadsetButtonKey, false);
+            }
+            if (mouseEvent->button() == Qt::LeftButton)
+            {
+                setKeyPressed(oxrsys::qt_simulator::TriggerMouseKey, false);
+            }
             break;
         }
         case QEvent::MouseMove:
@@ -1441,11 +1469,6 @@ void SimulatorWidget::recentreCapturedCursor()
     hasLastMousePosition_ = true;
 }
 
-void SimulatorWidget::toggleMouseCaptured(const char* reason)
-{
-    setMouseCaptured(!mouseCaptured_, reason);
-}
-
 void SimulatorWidget::accumulateMouseDelta(const QPointF& delta)
 {
     pendingMouseDelta_ += delta;
@@ -1453,9 +1476,15 @@ void SimulatorWidget::accumulateMouseDelta(const QPointF& delta)
 
 void SimulatorWidget::setKeyPressed(int key, bool pressed)
 {
+    // A click shorter than one tracking interval still reaches one packet before its release.
     if (pressed)
     {
         pressedKeys_.insert(key);
+        pressedSinceSend_.insert(key);
+    }
+    else if (pressedSinceSend_.contains(key))
+    {
+        releaseAfterSend_.insert(key);
     }
     else
     {
@@ -1465,7 +1494,8 @@ void SimulatorWidget::setKeyPressed(int key, bool pressed)
 
 void SimulatorWidget::resetInputState()
 {
-    pressedKeys_.clear();
+    pressedKeys_ = pressedSinceSend_;
+    releaseAfterSend_ = pressedSinceSend_;
     pendingMouseDelta_ = {};
     hasLastMousePosition_ = false;
 }
