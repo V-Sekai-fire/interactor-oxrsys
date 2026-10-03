@@ -134,6 +134,24 @@ void testFecRecovery()
            "Expected recovered packet bytes at the missing packet offset");
 }
 
+void testTrailingFecAfterCompleteFrameIgnored()
+{
+    VideoFrameAssembler assembler;
+    const QByteArray first("abc", 3);
+    const QByteArray fec(static_cast<qsizetype>(oxr::protocol::MAX_PACKET_PAYLOAD), char(0));
+    const uint8_t fecFlags = oxr::protocol::VIDEO_FLAG_FEC | oxr::protocol::VIDEO_FLAG_STEREO;
+    const uint16_t fecSize = static_cast<uint16_t>(oxr::protocol::MAX_PACKET_PAYLOAD);
+
+    assembler.addPacket(videoHeader(1, 0, 2, 3), first.constData(), first.size(), 10);
+    expect(assembler.addPacket(videoHeader(1, 1, 2, 3), first.constData(), first.size(), 11).size() == 1,
+           "Expected the two-packet frame to complete");
+    assembler.addPacket(videoHeader(1, 0, 2, fecSize, fecFlags), fec.constData(), fec.size(), 12);
+    assembler.addPacket(videoHeader(2, 0, 2, 3), first.constData(), first.size(), 20);
+    expect(assembler.addPacket(videoHeader(2, 1, 2, 3), first.constData(), first.size(), 21).size() == 1,
+           "Expected the next frame to complete");
+    expect(assembler.droppedFrames() == 0, "Expected trailing parity not to count a drop");
+}
+
 void testFecRecoveryUsesFinalShortPacketSize()
 {
     VideoFrameAssembler assembler;
@@ -266,6 +284,7 @@ int main()
         testRenderPoseIgnored();
         testFecRecovery();
         testFecRecoveryUsesFinalShortPacketSize();
+        testTrailingFecAfterCompleteFrameIgnored();
         testTrackingFlagsAndMovementTargets();
         testMouseLookVerticalInverted();
         testTouchControllerKeys();

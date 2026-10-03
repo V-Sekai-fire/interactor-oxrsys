@@ -883,7 +883,6 @@ bool SimulatorWidget::startVideoReceiver()
     lastKeyframeRequestTimeNs_ = 0;
     updatePreviewStatus();
 
-    videoSocket_->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 8 * 1024 * 1024);
     const bool bound = videoSocket_->bind(QHostAddress::AnyIPv4,
                                           oxr::protocol::VIDEO_PORT,
                                           QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
@@ -895,6 +894,8 @@ bool SimulatorWidget::startVideoReceiver()
                      .arg(videoSocket_->errorString()));
         return false;
     }
+    // Only a bound socket takes the option, and one frame is about 80 datagrams.
+    videoSocket_->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 8 * 1024 * 1024);
     return ensureVideoDecoder();
 #endif
 }
