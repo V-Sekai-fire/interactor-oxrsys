@@ -6,12 +6,9 @@ add_library(oxrsys-simulator-shared STATIC
     src/VideoFrameAssembler.cpp
 )
 
-# PyroWave decodes the stream; the Lean-authored kernels/simulator kernels turn it into pixels.
-target_sources(oxrsys-simulator-shared PRIVATE
-    src/PyroWaveDecoder.cpp
-    src/Yuv420ToRgbx.cpp
-)
-target_include_directories(oxrsys-simulator-shared PRIVATE ${CMAKE_SOURCE_DIR}/kernels/simulator/cpp)
+# PyroWave decodes the stream on the GPU; the Lean-authored kernels/simulator SPIR-V turns it into pixels.
+target_sources(oxrsys-simulator-shared PRIVATE src/PyroWaveDecoder.cpp)
+target_include_directories(oxrsys-simulator-shared PRIVATE ${CMAKE_SOURCE_DIR}/kernels/simulator/spirv)
 target_link_libraries(oxrsys-simulator-shared PRIVATE oxrsys_pyrowave)
 
 target_include_directories(oxrsys-simulator-shared PUBLIC

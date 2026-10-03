@@ -6,7 +6,8 @@
 #
 #   Lean (lean/, `lake exe emit_oxrsys`)  ->  slang/<k>.slang     (committed)
 #     slangc -target cpp                  ->  cpp/<k>_emit.cpp    (committed)
-#     slangc -target spirv                ->  spirv/<k>.spv       (committed)
+#     slangc -target spirv                ->  spirv/<k>.spv       (build artefact)
+#       embedded as a uint32_t array      ->  spirv/<k>_spv.h     (committed)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,5 +24,6 @@ for k in $KERNELS; do
 	( cd "$HERE" && "$SLANGC" -target cpp -stage compute -entry main -o "cpp/${k}_emit.cpp" "slang/$k.slang" )
 	"$SLANGC" -target spirv -profile sm_6_5 -stage compute -entry main -fp-mode precise \
 		-o "$HERE/spirv/$k.spv" "$HERE/slang/$k.slang"
+	python3 "$HERE/embed_spv.py" "$HERE/spirv/$k.spv" "$HERE/spirv/${k}_spv.h" "$k"
 done
 echo "== $(echo $KERNELS | wc -w) kernel(s): slang, cpp, spirv =="

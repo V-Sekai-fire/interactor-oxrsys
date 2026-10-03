@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
-// PyroWave decode for the Qt simulator: one stream frame in, one RGB QImage out, decoded on a
-// Vulkan device PyroWave creates itself and read back as YUV 4:2:0 planes.
+// PyroWave decode for the Qt simulator, on the GPU: PyroWave decodes into three plane images on a
+// Vulkan device it creates itself, and the Lean-authored yuv420_to_rgbx kernel (kernels/simulator)
+// turns them into RGBX in a host-visible buffer that becomes the QImage.
 
 #pragma once
 
@@ -11,19 +12,19 @@
 #include <QString>
 
 #include <cstdint>
-#include <vector>
+#include <memory>
 
 class PyroWaveDecoder final
 {
 public:
-    PyroWaveDecoder() = default;
+    PyroWaveDecoder();
     ~PyroWaveDecoder();
 
     PyroWaveDecoder(const PyroWaveDecoder&) = delete;
     PyroWaveDecoder& operator=(const PyroWaveDecoder&) = delete;
 
     bool initialize(QString* error);
-    bool isInitialized() const { return device_ != nullptr; }
+    bool isInitialized() const;
 
     // Decode one stream frame; the image is appended to frames.
     bool decode(const QByteArray& data, int64_t presentationTimeNs, QList<QImage>& frames);
@@ -34,11 +35,6 @@ public:
     static bool frameSize(const QByteArray& data, int& width, int& height);
 
 private:
-    bool ensureDecoder(int width, int height);
-
-    void* device_ = nullptr;  // pyrowave_device
-    void* decoder_ = nullptr; // pyrowave_decoder
-    int width_ = 0;
-    int height_ = 0;
-    std::vector<uint8_t> planes_[3];
+    struct Gpu;
+    std::unique_ptr<Gpu> gpu_;
 };
