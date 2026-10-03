@@ -162,8 +162,9 @@ Session::Session(Instance* instance, void* metalDevice, void* metalCommandQueue)
     spdlog::info("OXRSys: Metal session created");
 }
 
-Session::Session(Instance* instance, const GraphicsContext& graphicsContext)
-    : instance_(instance), graphicsContext_(graphicsContext)
+Session::Session(Instance* instance, const GraphicsContext& graphicsContext,
+                 std::shared_ptr<void> platformInterop)
+    : instance_(instance), graphicsContext_(graphicsContext), platformInterop_(std::move(platformInterop))
 {
     inputManager_ = std::make_unique<InputManager>();
 
@@ -176,7 +177,8 @@ Session::Session(Instance* instance, const GraphicsContext& graphicsContext)
     TransitionState(XR_SESSION_STATE_IDLE);
     TransitionState(XR_SESSION_STATE_READY);
 
-    spdlog::info("OXRSys: Vulkan session created");
+    spdlog::info("OXRSys: {} session created",
+                 graphicsContext_.api == GraphicsApi::D3D11 ? "D3D11" : "Vulkan");
 }
 
 Session::~Session()
@@ -583,6 +585,10 @@ XrResult Session::EndFrame(const XrFrameEndInfo* frameEndInfo)
     if (streamFrame && graphicsContext_.api == GraphicsApi::Vulkan)
     {
         Win32SerializeVulkanFrame(graphicsContext_.vulkan);
+    }
+    if (streamFrame && graphicsContext_.api == GraphicsApi::D3D11)
+    {
+        Win32SerializeD3D11Frame(graphicsContext_.d3d11);
     }
 #endif
 

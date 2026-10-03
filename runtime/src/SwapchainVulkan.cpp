@@ -93,6 +93,11 @@ Swapchain::Swapchain(const GraphicsContext& graphicsContext, const XrSwapchainCr
         InitVulkan(graphicsContext.metalDevice, graphicsContext.vulkan, createInfo);
         return;
     }
+    if (graphicsContext.api == GraphicsApi::D3D11)
+    {
+        InitD3D11(graphicsContext.d3d11, createInfo);
+        return;
+    }
 
     if (createInfo != nullptr)
     {
@@ -226,11 +231,36 @@ void Swapchain::InitVulkan(void* /*metalDevice*/, const VulkanGraphicsContext& v
                  width_, height_, format_, arraySize_, imageCount_);
 }
 
+void Swapchain::InitD3D11(const D3D11GraphicsContext& d3d11Context, const XrSwapchainCreateInfo* createInfo)
+{
+    graphicsApi_ = GraphicsApi::D3D11;
+    imageCount_ = 0;
+#if defined(_WIN32)
+    if (createInfo != nullptr)
+    {
+        width_ = createInfo->width;
+        height_ = createInfo->height;
+        format_ = createInfo->format;
+        arraySize_ = createInfo->arraySize > 0 ? createInfo->arraySize : 1;
+        const uint32_t imageCount =
+            (createInfo->createFlags & XR_SWAPCHAIN_CREATE_STATIC_IMAGE_BIT) != 0 ? 1 : SwapchainImageCount;
+        win32State_ = Win32CreateD3D11SwapchainImages(d3d11Context, *createInfo, imageCount, d3d11Textures_);
+        imageCount_ = win32State_ ? imageCount : 0;
+    }
+#endif
+    textures_.assign(imageCount_, nullptr);
+    imageStates_.assign(imageCount_, ImageState::Available);
+    Runtime::Get().RegisterHandle(handle_, this);
+    spdlog::info("OXRSys: D3D11 swapchain created {}x{} format={} arraySize={} images={}",
+                 width_, height_, format_, arraySize_, imageCount_);
+}
+
 Swapchain::~Swapchain()
 {
 #if defined(_WIN32)
     // The shared state owns the VkImages and their memory; staging leases may outlive it.
     vkImages_.clear();
+    d3d11Textures_.clear();
     win32State_.reset();
 #endif
     if (graphicsApi_ == GraphicsApi::Vulkan && vkDevice_ != nullptr)
@@ -269,6 +299,23 @@ XrResult Swapchain::EnumerateImages(uint32_t imageCapacityInput, uint32_t* image
     if (imageCapacityInput < imageCount_)
     {
         return XR_ERROR_SIZE_INSUFFICIENT;
+    }
+    if (graphicsApi_ == GraphicsApi::D3D11)
+    {
+        if (images == nullptr || images[0].type != XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR)
+        {
+            return XR_ERROR_VALIDATION_FAILURE;
+        }
+#ifdef XR_USE_GRAPHICS_API_D3D11
+        XrSwapchainImageD3D11KHR* d3d11Images = reinterpret_cast<XrSwapchainImageD3D11KHR*>(images);
+        for (uint32_t i = 0; i < imageCount_; i++)
+        {
+            d3d11Images[i].texture = static_cast<ID3D11Texture2D*>(d3d11Textures_[i]);
+        }
+        return XR_SUCCESS;
+#else
+        return XR_ERROR_VALIDATION_FAILURE;
+#endif
     }
     if (graphicsApi_ != GraphicsApi::Vulkan)
     {
@@ -379,6 +426,10 @@ XrResult Swapchain::ReleaseImage(const XrSwapchainImageReleaseInfo* releaseInfo)
 
 void* Swapchain::GetLastReleasedTexture() const
 {
+    if (graphicsApi_ == GraphicsApi::D3D11)
+    {
+        return d3d11Textures_.empty() ? nullptr : d3d11Textures_[lastReleasedIndex_];
+    }
     if (vkImages_.empty())
     {
         return nullptr;
@@ -399,7 +450,7 @@ void* Swapchain::GetLastReleasedTextureSlice(uint32_t arrayIndex) const
 FrameImageSource Swapchain::GetLastReleasedFrameImageSource(uint32_t arrayIndex) const
 {
     std::scoped_lock lock(stateMutex_);
-    if (!hasReleasedImage_ || arrayIndex >= arraySize_ || vkImages_.empty())
+    if (!hasReleasedImage_ || arrayIndex >= arraySize_)
     {
         return {};
     }
@@ -407,6 +458,11 @@ FrameImageSource Swapchain::GetLastReleasedFrameImageSource(uint32_t arrayIndex)
 #if defined(_WIN32)
     return Win32StageSwapchainSlice(win32State_, lastReleasedIndex_, arrayIndex);
 #endif
+
+    if (vkImages_.empty())
+    {
+        return {};
+    }
 
     void* image = reinterpret_cast<void*>(vkImages_[lastReleasedIndex_]);
     if (image == nullptr)

@@ -7,6 +7,12 @@
 #ifdef XR_USE_GRAPHICS_API_VULKAN
 #include <vulkan/vulkan.h>
 #endif
+#ifdef XR_USE_GRAPHICS_API_D3D11
+#include <d3d11.h>
+#ifdef GetCurrentTime
+#undef GetCurrentTime // winbase.h macro; clashes with Session::GetCurrentTime
+#endif
+#endif
 #include <openxr/openxr_platform.h>
 #include <vector>
 #include <cstdint>
@@ -97,6 +103,7 @@ private:
     void InitMetal(void* metalDevice, const XrSwapchainCreateInfo* createInfo);
     void InitVulkan(void* metalDevice, const VulkanGraphicsContext& vulkanContext,
                      const XrSwapchainCreateInfo* createInfo);
+    void InitD3D11(const D3D11GraphicsContext& d3d11Context, const XrSwapchainCreateInfo* createInfo);
     void InitMetalStaging(void* metalDevice);
 
     uint64_t handle_ = 0;
@@ -132,6 +139,7 @@ private:
 
     // Windows: shared D3D11 textures and eye textures (D3D11Interop.cpp)
     std::shared_ptr<void> win32State_ = {};
+    std::vector<void*> d3d11Textures_; // ID3D11Texture2D* on the app's device, owned by win32State_
 
     uint32_t nextAcquireIndex_ = 0;
     uint32_t lastReleasedIndex_ = 0;

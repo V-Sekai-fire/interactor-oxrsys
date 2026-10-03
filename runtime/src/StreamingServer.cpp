@@ -255,6 +255,10 @@ bool IsGraphicsContextValid(const GraphicsContext& context)
     {
         return context.vulkan.device != nullptr;
     }
+    if (context.api == GraphicsApi::D3D11)
+    {
+        return context.d3d11.device != nullptr;
+    }
     return context.metalDevice != nullptr;
 }
 

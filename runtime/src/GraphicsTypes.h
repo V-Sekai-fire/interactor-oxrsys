@@ -9,6 +9,7 @@ enum class GraphicsApi
 {
     Metal,
     Vulkan,
+    D3D11,
 };
 
 struct VulkanGraphicsContext
@@ -20,12 +21,18 @@ struct VulkanGraphicsContext
     uint32_t queueIndex = 0;
 };
 
+struct D3D11GraphicsContext
+{
+    void* device = nullptr; // the app's ID3D11Device
+};
+
 struct GraphicsContext
 {
     GraphicsApi api = GraphicsApi::Metal;
     void* metalDevice = nullptr;
     void* metalCommandQueue = nullptr;
     VulkanGraphicsContext vulkan = {};
+    D3D11GraphicsContext d3d11 = {};
 
     static GraphicsContext Metal(void* device, void* commandQueue = nullptr)
     {
@@ -43,6 +50,14 @@ struct GraphicsContext
         context.api = GraphicsApi::Vulkan;
         context.metalDevice = debugMetalDevice;
         context.vulkan = vulkanContext;
+        return context;
+    }
+
+    static GraphicsContext D3D11(const D3D11GraphicsContext& d3d11Context)
+    {
+        GraphicsContext context = {};
+        context.api = GraphicsApi::D3D11;
+        context.d3d11 = d3d11Context;
         return context;
     }
 };
