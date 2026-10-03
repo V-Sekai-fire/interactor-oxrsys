@@ -7,6 +7,8 @@
 
 int main(int argc, char** argv)
 {
+    // As a GUI app Qt would log to the debugger; redirected stderr is where scripts read these lines.
+    qputenv("QT_FORCE_STDERR_LOGGING", "1");
     QApplication app(argc, argv);
 
     QCommandLineParser parser;
