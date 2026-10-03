@@ -92,9 +92,10 @@ private:
     void resetVideoDecoder();
     bool decodeVideoFrame(const AssembledVideoFrame& frame);
 #endif
-    void setMouseCaptured(bool captured);
-    void toggleMouseCaptured();
+    void setMouseCaptured(bool captured, const char* reason);
+    void toggleMouseCaptured(const char* reason);
     void recentreCapturedCursor();
+    bool focusStaysInside() const;
     void accumulateMouseDelta(const QPointF& delta);
     void setKeyPressed(int key, bool pressed);
     void resetInputState();
@@ -134,6 +135,10 @@ private:
     bool autoConnect_ = true;
     QString snapshotPath_;
     QElapsedTimer poseClock_;
+    QElapsedTimer captureSpan_;
+    const char* captureStartReason_ = "";
+    int captureMoves_ = 0;
+    int captureRecentres_ = 0;
     QSet<int> pressedKeys_;
     QPointF lastMousePosition_;
     QPointF pendingMouseDelta_;

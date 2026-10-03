@@ -101,8 +101,9 @@ server has been discovered, then sends both angles in each tracking packet.
 
 | Input | Action |
 | --- | --- |
+| Left click in the preview | Capture mouse look; the hidden cursor stays centred, so look turns without limit |
 | Right mouse button in the preview | Capture or release mouse look |
-| Mouse move while captured, or left-drag | Head look: mouse down looks down |
+| Mouse move while captured | Head look: mouse down looks down |
 | Mouse wheel | Move forward or backward |
 | `Z Q S D` or `W A S D` | Move head |
 | `Left Shift` + movement | Move left controller |
