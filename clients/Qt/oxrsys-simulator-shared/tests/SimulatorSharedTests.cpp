@@ -205,7 +205,7 @@ void testTrackingFlagsAndMovementTargets()
     keys.insert(Qt::Key_W);
     advanceSimulatorTracking(pose, {}, keys, 1.0f);
     expect(pose.headPosition[2] < -1.9f, "Expected unmodified movement to move head");
-    expect(pose.leftHandOffset[2] == -0.35f, "Expected head movement to leave the left hand's offset alone");
+    expect(pose.leftHandOffset[2] == -0.05f, "Expected head movement to leave the left hand's offset alone");
 
     SimulatorTrackingPose shiftedPose;
     QSet<int> shiftedKeys;
@@ -279,6 +279,11 @@ void testHandsAimAtGaze()
     pose.yaw = 1.2f;
     pose.pitch = -0.4f;
     pose.headPosition[0] = 3.0f;
+    TrackingPacket idle = {};
+    fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, idle);
+    expect(idle.rightControllerPos[1] < 1.0f && idle.leftControllerPos[1] < 1.0f,
+           "Expected both hands at the sides of the body while not pointing");
+    advanceSimulatorTracking(pose, {}, {TriggerMouseKey}, 0.01f);
     TrackingPacket packet = {};
     fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, packet);
     const float* p = packet.rightControllerPos;
@@ -298,6 +303,10 @@ void testHandsAimAtGaze()
         const float miss = std::sqrt(std::max(0.0f, dx * dx + dy * dy + dz * dz - along * along));
         expect(along > 0.0f && miss < 0.001f, "Expected the right hand's laser within 1 mm of the gaze point");
     }
+    advanceSimulatorTracking(pose, {}, {}, 2.0f);
+    TrackingPacket lowered = {};
+    fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, lowered);
+    expect(lowered.rightControllerPos[1] < 1.0f, "Expected the right hand back at the side after pointing");
 }
 
 void testControllersPresentFlag()

@@ -84,6 +84,13 @@ void advanceSimulatorTracking(SimulatorTrackingPose& pose,
     constexpr float MouseSensitivity = 0.003f;
     constexpr float MoveSpeed = 2.0f;
 
+    // Pressing the trigger or the system button raises the right hand to point; it lowers 1.5 s later.
+    if (containsAny(pressedKeys, {TriggerMouseKey, Qt::Key_H, Qt::Key_M}))
+    {
+        pose.pointingSeconds = 1.5f;
+    }
+    pose.pointingSeconds = std::max(0.0f, pose.pointingSeconds - deltaTime);
+
     pose.yaw -= static_cast<float>(mouseDelta.x()) * MouseSensitivity;
     pose.pitch -= static_cast<float>(mouseDelta.y()) * MouseSensitivity;
     pose.pitch = std::clamp(pose.pitch, -1.5f, 1.5f);
@@ -179,27 +186,35 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
         rotation[3] = q.w;
     };
 
-    const Vector rest = rotate(bodyYaw, {pose.leftHandOffset[0], pose.leftHandOffset[1], pose.leftHandOffset[2]});
-    store({head.x + rest.x, head.y + rest.y, head.z + rest.z}, bodyYaw, packet.leftControllerPos,
+    const Vector left = rotate(bodyYaw, {pose.leftHandOffset[0], pose.leftHandOffset[1], pose.leftHandOffset[2]});
+    store({head.x + left.x, head.y + left.y, head.z + left.z}, bodyYaw, packet.leftControllerPos,
           packet.leftControllerRot);
-
-    // Arm IK sights the right hand along the gaze, as a person points at what they look at: the hand
-    // sits on the line of sight at the reach the shoulder allows and points along it, so its laser
-    // lands on the reticle at every distance.
-    constexpr float ArmLength = 0.6f;
-    constexpr float PreferredReach = 0.45f;
-    const Vector g = rotate(orientation, {0.0f, 0.0f, -1.0f});
-    const Vector s = rotate(bodyYaw, {pose.rightHandOffset[0], pose.rightHandOffset[1], pose.rightHandOffset[2]});
-    const Vector shoulder = {head.x + s.x, head.y + s.y, head.z + s.z};
-    const Vector eyeToShoulder = {head.x - shoulder.x, head.y - shoulder.y, head.z - shoulder.z};
-    const float b = g.x * eyeToShoulder.x + g.y * eyeToShoulder.y + g.z * eyeToShoulder.z;
-    const float c = eyeToShoulder.x * eyeToShoulder.x + eyeToShoulder.y * eyeToShoulder.y +
-                    eyeToShoulder.z * eyeToShoulder.z - ArmLength * ArmLength;
-    const float discriminant = b * b - c;
-    const float farthest = discriminant > 0.0f ? -b + std::sqrt(discriminant) : PreferredReach;
-    const float reach = std::clamp(std::min(PreferredReach, farthest), 0.05f, PreferredReach);
-    store({head.x + g.x * reach, head.y + g.y * reach, head.z + g.z * reach}, orientation,
-          packet.rightControllerPos, packet.rightControllerRot);
+    if (pose.pointingSeconds <= 0.0f)
+    {
+        const Vector right = rotate(bodyYaw, {pose.rightHandOffset[0], pose.rightHandOffset[1], pose.rightHandOffset[2]});
+        store({head.x + right.x, head.y + right.y, head.z + right.z}, bodyYaw, packet.rightControllerPos,
+              packet.rightControllerRot);
+    }
+    else
+    {
+        // Arm IK sights the right hand along the gaze, as a person points at what they look at: the hand
+        // sits on the line of sight at the reach the shoulder allows and points along it, so its laser
+        // lands on the reticle at every distance.
+        constexpr float ArmLength = 0.6f;
+        constexpr float PreferredReach = 0.45f;
+        const Vector g = rotate(orientation, {0.0f, 0.0f, -1.0f});
+        const Vector s = rotate(bodyYaw, {pose.rightShoulder[0], pose.rightShoulder[1], pose.rightShoulder[2]});
+        const Vector shoulder = {head.x + s.x, head.y + s.y, head.z + s.z};
+        const Vector eyeToShoulder = {head.x - shoulder.x, head.y - shoulder.y, head.z - shoulder.z};
+        const float b = g.x * eyeToShoulder.x + g.y * eyeToShoulder.y + g.z * eyeToShoulder.z;
+        const float c = eyeToShoulder.x * eyeToShoulder.x + eyeToShoulder.y * eyeToShoulder.y +
+                        eyeToShoulder.z * eyeToShoulder.z - ArmLength * ArmLength;
+        const float discriminant = b * b - c;
+        const float farthest = discriminant > 0.0f ? -b + std::sqrt(discriminant) : PreferredReach;
+        const float reach = std::clamp(std::min(PreferredReach, farthest), 0.05f, PreferredReach);
+        store({head.x + g.x * reach, head.y + g.y * reach, head.z + g.z * reach}, orientation,
+              packet.rightControllerPos, packet.rightControllerRot);
+    }
 
     if (pressedKeys.contains(Qt::Key_F))
     {

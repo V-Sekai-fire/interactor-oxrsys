@@ -26,10 +26,12 @@ struct SimulatorTrackingPose
     float pitch = 0.0f;
     float roll = 0.0f;
     float headPosition[3] = {0.0f, 1.6f, 0.0f};
-    // The left hand rests relative to the head in its yaw frame, so it follows walking and turning.
-    // The right, dominant hand is placed by arm IK: the right offset is its shoulder.
-    float leftHandOffset[3] = {-0.18f, -0.35f, -0.35f};
-    float rightHandOffset[3] = {0.18f, -0.22f, 0.04f};
+    // Hands rest at the sides of the body, relative to the head in its yaw frame, so they follow
+    // walking and turning. While pointing, arm IK raises the right, dominant hand from its shoulder.
+    float leftHandOffset[3] = {-0.22f, -0.72f, -0.05f};
+    float rightHandOffset[3] = {0.22f, -0.72f, -0.05f};
+    float rightShoulder[3] = {0.18f, -0.22f, 0.04f};
+    float pointingSeconds = 0.0f;
 };
 
 void advanceSimulatorTracking(SimulatorTrackingPose& pose,
