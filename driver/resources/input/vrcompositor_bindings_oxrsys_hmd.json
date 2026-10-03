@@ -1,0 +1,25 @@
+{
+  "action_manifest_version": 0,
+  "app_key": "openvr.component.vrcompositor",
+  "controller_type": "oxrsys_hmd",
+  "category": "steamvr_input",
+  "name": "OXRSys headset: gaze pointer, the headset button selects",
+  "bindings": {
+    "/actions/lasermouse": {
+      "poses": [ { "output": "/actions/lasermouse/in/pointer", "path": "/user/head/pose/raw" } ],
+      "sources": [
+        { "mode": "button", "path": "/user/head/input/system", "inputs": { "click": { "output": "/actions/lasermouse/in/leftclick" } } }
+      ]
+    },
+    "/actions/system": {
+      "sources": [
+        { "mode": "complex_button", "path": "/user/head/input/system", "inputs": { "single": { "output": "/actions/system/in/opendashboard" }, "double": { "output": "/actions/system/in/toggleroomview" } } }
+      ]
+    },
+    "/actions/lasermouse_secondary": {
+      "sources": [
+        { "mode": "button", "path": "/user/head/input/system", "inputs": { "click": { "output": "/actions/lasermouse_secondary/in/switchlaserhand" } } }
+      ]
+    }
+  }
+}

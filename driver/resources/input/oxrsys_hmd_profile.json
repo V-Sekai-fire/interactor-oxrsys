@@ -1,0 +1,12 @@
+{
+  "jsonid": "input_profile",
+  "controller_type": "oxrsys_hmd",
+  "input_bindingui_mode": "hmd",
+  "input_source": {
+    "/input/system": { "type": "button", "click": true },
+    "/pose/raw": { "type": "pose" }
+  },
+  "default_bindings": [
+    { "app_key": "openvr.component.vrcompositor", "binding_url": "vrcompositor_bindings_oxrsys_hmd.json" }
+  ]
+}

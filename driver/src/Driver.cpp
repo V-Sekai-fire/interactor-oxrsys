@@ -51,6 +51,7 @@ IVRServerDriverHost* gHost = nullptr;
 IVRProperties* gProperties = nullptr;
 IVRDriverLog* gLog = nullptr;
 IVRSettings* gSettings = nullptr;
+IVRDriverInput* gInput = nullptr;
 
 void Log(const char* format, ...)
 {
@@ -616,6 +617,95 @@ private:
     std::atomic<int64_t> nextVsyncNs_{0};
 };
 
+// A hand that SteamVR sees only while its grip is held, so it draws that hand's laser; released, it
+// reports disconnected and the head pose is the pointer again.
+class Controller final : public ITrackedDeviceServerDriver
+{
+public:
+    explicit Controller(bool left)
+        : left_(left)
+    {
+    }
+
+    EVRInitError Activate(uint32_t unObjectId) override
+    {
+        id_ = unObjectId;
+        const PropertyContainerHandle_t c = gProperties->TrackedDeviceToPropertyContainer(unObjectId);
+        WriteString(c, Prop_TrackingSystemName_String, "oxrsys");
+        WriteString(c, Prop_ModelNumber_String, "OXRSys Controller");
+        WriteString(c, Prop_SerialNumber_String, left_ ? "OXRSYS-LEFT-0" : "OXRSYS-RIGHT-0");
+        WriteString(c, Prop_ManufacturerName_String, "OXRSys");
+        WriteString(c, Prop_ControllerType_String, "oxrsys_controller");
+        WriteString(c, Prop_InputProfilePath_String, "{oxrsys}/input/oxrsys_controller_profile.json");
+        WriteProperty(c, Prop_ControllerRoleHint_Int32,
+                      static_cast<int32_t>(left_ ? TrackedControllerRole_LeftHand : TrackedControllerRole_RightHand),
+                      k_unInt32PropertyTag);
+        if (gInput != nullptr)
+        {
+            gInput->CreateBooleanComponent(c, "/input/trigger/click", &triggerClick_);
+            gInput->CreateScalarComponent(c, "/input/trigger/value", &triggerValue_, VRScalarType_Absolute,
+                                          VRScalarUnits_NormalizedOneSided);
+            gInput->CreateBooleanComponent(c, "/input/grip/click", &gripClick_);
+            gInput->CreateScalarComponent(c, "/input/grip/value", &gripValue_, VRScalarType_Absolute,
+                                          VRScalarUnits_NormalizedOneSided);
+            gInput->CreateBooleanComponent(c, "/input/system/click", &systemClick_);
+        }
+        return VRInitError_None;
+    }
+
+    void Deactivate() override { id_ = kInvalidId; }
+    void EnterStandby() override {}
+    void* GetComponent(const char* /*name*/) override { return nullptr; }
+    void DebugRequest(const char* /*pchRequest*/, char* pchResponseBuffer, uint32_t unResponseBufferSize) override
+    {
+        if (unResponseBufferSize > 0)
+            pchResponseBuffer[0] = '\0';
+    }
+    DriverPose_t GetPose() override { return pose_; }
+
+    void Update(const oxr::protocol::TrackingPacket& packet)
+    {
+        if (id_ == kInvalidId)
+            return;
+        const float grip = left_ ? packet.leftGrip : packet.rightGrip;
+        const float trigger = left_ ? packet.leftTrigger : packet.rightTrigger;
+        const float* position = left_ ? packet.leftControllerPos : packet.rightControllerPos;
+        const float* rotation = left_ ? packet.leftControllerRot : packet.rightControllerRot;
+        pose_ = {};
+        pose_.qWorldFromDriverRotation = Identity();
+        pose_.qDriverFromHeadRotation = Identity();
+        for (int i = 0; i < 3; ++i)
+            pose_.vecPosition[i] = position[i];
+        pose_.qRotation.x = rotation[0];
+        pose_.qRotation.y = rotation[1];
+        pose_.qRotation.z = rotation[2];
+        pose_.qRotation.w = rotation[3];
+        pose_.result = TrackingResult_Running_OK;
+        pose_.poseIsValid = grip > 0.5f;
+        pose_.deviceIsConnected = grip > 0.5f;
+        gHost->TrackedDevicePoseUpdated(id_, pose_, sizeof(pose_));
+        if (gInput != nullptr)
+        {
+            gInput->UpdateBooleanComponent(triggerClick_, trigger > 0.5f, 0.0);
+            gInput->UpdateScalarComponent(triggerValue_, trigger, 0.0);
+            gInput->UpdateBooleanComponent(gripClick_, grip > 0.5f, 0.0);
+            gInput->UpdateScalarComponent(gripValue_, grip, 0.0);
+            gInput->UpdateBooleanComponent(systemClick_, false, 0.0);
+        }
+    }
+
+private:
+    static constexpr uint32_t kInvalidId = 0xFFFFFFFFu;
+    bool left_;
+    uint32_t id_ = kInvalidId;
+    DriverPose_t pose_ = {};
+    VRInputComponentHandle_t triggerClick_ = 0;
+    VRInputComponentHandle_t triggerValue_ = 0;
+    VRInputComponentHandle_t gripClick_ = 0;
+    VRInputComponentHandle_t gripValue_ = 0;
+    VRInputComponentHandle_t systemClick_ = 0;
+};
+
 class Hmd final : public ITrackedDeviceServerDriver
 {
 public:
@@ -652,6 +742,11 @@ public:
         WriteProperty(c, Prop_IsOnDesktop_Bool, false, k_unBoolPropertyTag);
         WriteProperty(c, Prop_CurrentUniverseId_Uint64, static_cast<uint64_t>(2), k_unUint64PropertyTag);
         WriteProperty(c, Prop_GraphicsAdapterLuid_Uint64, direct_.AdapterLuid(), k_unUint64PropertyTag);
+        // The headset's button, as on a headset whose button selects by gaze when no controller is held.
+        WriteString(c, Prop_ControllerType_String, "oxrsys_hmd");
+        WriteString(c, Prop_InputProfilePath_String, "{oxrsys}/input/oxrsys_hmd_profile.json");
+        if (gInput != nullptr)
+            gInput->CreateBooleanComponent(c, "/input/system/click", &systemClick_);
         active_ = true;
         tick_ = std::thread([this]() { TickThread(); });
         return VRInitError_None;
@@ -697,6 +792,7 @@ public:
     }
 
     DirectModeComponent& Direct() { return direct_; }
+    void SetHands(Controller* left, Controller* right) { hands_ = {left, right}; }
     void SetStreaming(StreamingServer* server)
     {
         server_ = server;
@@ -704,7 +800,7 @@ public:
     }
 
 private:
-    DriverPose_t CurrentPose()
+    DriverPose_t CurrentPose(oxr::protocol::TrackingPacket* latest = nullptr)
     {
         DriverPose_t pose = {};
         pose.qWorldFromDriverRotation = Identity();
@@ -721,6 +817,8 @@ private:
             pose.qRotation.y = packet.headOrientation[1];
             pose.qRotation.z = packet.headOrientation[2];
             pose.qRotation.w = packet.headOrientation[3];
+            if (latest != nullptr)
+                *latest = packet;
         }
         pose.result = TrackingResult_Running_OK;
         pose.poseIsValid = true;
@@ -737,14 +835,22 @@ private:
         {
             next += period;
             direct_.SetNextVsync(next);
-            const DriverPose_t pose = CurrentPose();
+            oxr::protocol::TrackingPacket packet = {};
+            const DriverPose_t pose = CurrentPose(&packet);
             gHost->TrackedDevicePoseUpdated(id_, pose, sizeof(pose));
             gHost->VsyncEvent(0.0);
+            if (gInput != nullptr)
+                gInput->UpdateBooleanComponent(systemClick_, (packet.buttonState & oxr::protocol::BUTTON_HEADSET_SYSTEM) != 0, 0.0);
+            for (Controller* hand : hands_)
+                if (hand != nullptr)
+                    hand->Update(packet);
             std::this_thread::sleep_until(next);
         }
     }
 
     uint32_t id_ = 0;
+    VRInputComponentHandle_t systemClick_ = 0;
+    std::array<Controller*, 2> hands_ = {nullptr, nullptr};
     std::atomic_bool active_{false};
     std::thread tick_;
     StreamingServer* server_ = nullptr;
@@ -762,6 +868,7 @@ public:
         gProperties = static_cast<IVRProperties*>(context->GetGenericInterface(kIVRProperties_Version, nullptr));
         gLog = static_cast<IVRDriverLog*>(context->GetGenericInterface(kIVRDriverLog_Version, nullptr));
         gSettings = static_cast<IVRSettings*>(context->GetGenericInterface(kIVRSettings_Version, nullptr));
+        gInput = static_cast<IVRDriverInput*>(context->GetGenericInterface(kIVRDriverInput_Version, nullptr));
         if (gHost == nullptr || gProperties == nullptr || gLog == nullptr || gSettings == nullptr)
             return VRInitError_Init_InterfaceNotFound;
 
@@ -796,6 +903,12 @@ public:
 
         if (!gHost->TrackedDeviceAdded("OXRSYS-HMD-0", TrackedDeviceClass_HMD, hmd_.get()))
             Log("oxrsys: the head-mounted display was not added");
+        left_ = std::make_unique<Controller>(true);
+        right_ = std::make_unique<Controller>(false);
+        if (gInput == nullptr || !gHost->TrackedDeviceAdded("OXRSYS-LEFT-0", TrackedDeviceClass_Controller, left_.get()) ||
+            !gHost->TrackedDeviceAdded("OXRSYS-RIGHT-0", TrackedDeviceClass_Controller, right_.get()))
+            Log("oxrsys: the controllers were not added");
+        hmd_->SetHands(left_.get(), right_.get());
         Log("oxrsys: provider initialised");
         return VRInitError_None;
     }
@@ -804,7 +917,10 @@ public:
     {
         OXRSYS_HIT("IServerTrackedDeviceProvider::Cleanup");
         if (hmd_)
+        {
             hmd_->SetStreaming(nullptr);
+            hmd_->SetHands(nullptr, nullptr);
+        }
         if (server_)
             server_->Stop();
         server_.reset();
@@ -819,6 +935,7 @@ public:
             kITrackedDeviceServerDriver_Version,
             kIVRDisplayComponent_Version,
             kIVRDriverDirectModeComponent_Version,
+            kIVRDriverInput_Version,
             kIServerTrackedDeviceProvider_Version,
             nullptr,
         };
@@ -846,6 +963,8 @@ public:
 
 private:
     std::unique_ptr<Hmd> hmd_;
+    std::unique_ptr<Controller> left_;
+    std::unique_ptr<Controller> right_;
     std::unique_ptr<StreamingServer> server_;
 };
 

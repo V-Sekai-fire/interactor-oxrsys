@@ -16,6 +16,9 @@ namespace oxrsys::qt_simulator
 
 constexpr int LeftShiftKey = -1001;
 constexpr int RightShiftKey = -1002;
+// The middle mouse button is the headset button; the left one is the trigger of a hand whose grip is held.
+constexpr int HeadsetButtonKey = -1003;
+constexpr int TriggerMouseKey = -1004;
 
 struct SimulatorTrackingPose
 {

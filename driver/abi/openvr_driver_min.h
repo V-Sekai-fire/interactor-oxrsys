@@ -17,6 +17,7 @@ class IVRServerDriverHost;
 class IVRProperties;
 class IVRDriverLog;
 class IVRSettings;
+class IVRDriverInput;
 
 class IServerTrackedDeviceProvider
 {
@@ -132,6 +133,17 @@ public:
 inline constexpr char kIVRSettings_Version[] = "IVRSettings_003";
 inline constexpr uint32_t kIVRSettings_SlotCount = 9;
 
+class IVRDriverInput
+{
+public:
+    virtual EVRInputError CreateBooleanComponent(PropertyContainerHandle_t ulContainer, const char *pchName, VRInputComponentHandle_t *pHandle) = 0;
+    virtual EVRInputError UpdateBooleanComponent(VRInputComponentHandle_t ulComponent, bool bNewValue, double fTimeOffset) = 0;
+    virtual EVRInputError CreateScalarComponent(PropertyContainerHandle_t ulContainer, const char *pchName, VRInputComponentHandle_t *pHandle, EVRScalarType eType, EVRScalarUnits eUnits) = 0;
+    virtual EVRInputError UpdateScalarComponent(VRInputComponentHandle_t ulComponent, float fNewValue, double fTimeOffset) = 0;
+};
+inline constexpr char kIVRDriverInput_Version[] = "IVRDriverInput_004";
+inline constexpr uint32_t kIVRDriverInput_SlotCount = 4;
+
 struct SlotProbe
 {
     const char *interfaceName;
@@ -192,6 +204,10 @@ inline const SlotProbe kSlotProbes[] = {
     {"IVRSettings", "GetInt32", 6, [](void *o) { static_cast<IVRSettings *>(o)->GetInt32({}, {}, {}); }},
     {"IVRSettings", "Pad7_GetFloat", 7, [](void *o) { static_cast<IVRSettings *>(o)->Pad7_GetFloat(); }},
     {"IVRSettings", "GetString", 8, [](void *o) { static_cast<IVRSettings *>(o)->GetString({}, {}, {}, {}, {}); }},
+    {"IVRDriverInput", "CreateBooleanComponent", 0, [](void *o) { static_cast<IVRDriverInput *>(o)->CreateBooleanComponent({}, {}, {}); }},
+    {"IVRDriverInput", "UpdateBooleanComponent", 1, [](void *o) { static_cast<IVRDriverInput *>(o)->UpdateBooleanComponent({}, {}, {}); }},
+    {"IVRDriverInput", "CreateScalarComponent", 2, [](void *o) { static_cast<IVRDriverInput *>(o)->CreateScalarComponent({}, {}, {}, {}, {}); }},
+    {"IVRDriverInput", "UpdateScalarComponent", 3, [](void *o) { static_cast<IVRDriverInput *>(o)->UpdateScalarComponent({}, {}, {}); }},
 };
 
 } // namespace oxrvr

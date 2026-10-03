@@ -16,6 +16,7 @@ using PropertyContainerHandle_t = uint64_t;
 using DriverHandle_t = uint64_t;
 using TrackedDeviceIndex_t = uint32_t;
 using PropertyTypeTag_t = uint32_t;
+using VRInputComponentHandle_t = uint64_t;
 
 enum EVRInitError
 {
@@ -32,6 +33,28 @@ enum EVREye
 enum ETrackedDeviceClass
 {
     TrackedDeviceClass_HMD = 1,
+    TrackedDeviceClass_Controller = 2,
+};
+
+enum ETrackedControllerRole
+{
+    TrackedControllerRole_LeftHand = 1,
+    TrackedControllerRole_RightHand = 2,
+};
+
+enum EVRInputError
+{
+    VRInputError_None = 0,
+};
+
+enum EVRScalarType
+{
+    VRScalarType_Absolute = 0,
+};
+
+enum EVRScalarUnits
+{
+    VRScalarUnits_NormalizedOneSided = 0,
 };
 
 enum ETrackingResult
@@ -60,6 +83,7 @@ enum ETrackedDeviceProperty
     Prop_ModelNumber_String = 1001,
     Prop_SerialNumber_String = 1002,
     Prop_ManufacturerName_String = 1005,
+    Prop_ControllerRoleHint_Int32 = 3007,
     Prop_SecondsFromVsyncToPhotons_Float = 2001,
     Prop_DisplayFrequency_Float = 2002,
     Prop_UserIpdMeters_Float = 2003,
@@ -67,6 +91,7 @@ enum ETrackedDeviceProperty
     Prop_IsOnDesktop_Bool = 2007,
     Prop_DriverDirectModeSendsVsyncEvents_Bool = 2043,
     Prop_GraphicsAdapterLuid_Uint64 = 2045,
+    Prop_InputProfilePath_String = 1037,
     Prop_NamedIconPathDeviceOff_String = 5001,
     Prop_NamedIconPathDeviceSearching_String = 5002,
     Prop_NamedIconPathDeviceSearchingAlert_String = 5003,
@@ -76,9 +101,11 @@ enum ETrackedDeviceProperty
     Prop_NamedIconPathDeviceStandby_String = 5007,
     Prop_NamedIconPathDeviceAlertLow_String = 5008,
     Prop_NamedIconPathDeviceStandbyAlert_String = 5009,
+    Prop_ControllerType_String = 7000,
 };
 
 inline constexpr PropertyTypeTag_t k_unFloatPropertyTag = 1;
+inline constexpr PropertyTypeTag_t k_unInt32PropertyTag = 2;
 inline constexpr PropertyTypeTag_t k_unUint64PropertyTag = 3;
 inline constexpr PropertyTypeTag_t k_unBoolPropertyTag = 4;
 inline constexpr PropertyTypeTag_t k_unStringPropertyTag = 5;

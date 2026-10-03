@@ -182,6 +182,20 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
         packet.buttonState |= oxr::protocol::BUTTON_RIGHT_GRIP;
         packet.rightGrip = 1.0f;
     }
+    if (pressedKeys.contains(HeadsetButtonKey))
+    {
+        packet.buttonState |= oxr::protocol::BUTTON_HEADSET_SYSTEM;
+    }
+    if (pressedKeys.contains(TriggerMouseKey) && pressedKeys.contains(Qt::Key_F))
+    {
+        packet.buttonState |= oxr::protocol::BUTTON_LEFT_TRIGGER;
+        packet.leftTrigger = 1.0f;
+    }
+    if (pressedKeys.contains(TriggerMouseKey) && pressedKeys.contains(Qt::Key_G))
+    {
+        packet.buttonState |= oxr::protocol::BUTTON_RIGHT_TRIGGER;
+        packet.rightTrigger = 1.0f;
+    }
     if (pressedKeys.contains(Qt::Key_T))
     {
         packet.buttonState |= oxr::protocol::BUTTON_LEFT_TRIGGER;
