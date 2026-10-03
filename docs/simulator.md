@@ -40,12 +40,12 @@ The viewer connects to the runtime as a streaming client, using the same UDP pro
 The Qt simulator searches at start and connects to the first runtime it hears;
 `OXRSYS_SIMULATOR_AUTOCONNECT=0` leaves it disconnected until Search is clicked.
 
-The Qt simulator uses the same UDP discovery, video, control, and tracking ports. With FFmpeg
-development libraries available at build time, the Qt widget decodes the H.265 stream into its
-preview surface. That surface is also the interaction target for click, drag, scroll, keyboard focus,
-and mouse capture. If no decoded frame is available yet, it shows a synthetic pose preview with a
-`Waiting for video` status. If FFmpeg was not enabled, it shows `Video preview unavailable: FFmpeg
-support was not enabled` and keeps synthetic tracking available.
+The Qt simulator uses the same UDP discovery, video, control, and tracking ports. It decodes the
+PyroWave stream on the GPU and presents the left eye through a Vulkan swapchain on its preview
+surface, with the pose and stream badges drawn over it. The video window is transparent to input,
+so the surface stays the interaction target for click, drag, scroll, keyboard focus, and mouse
+capture. If no decoded frame is available yet, it shows a synthetic pose preview with a
+`Waiting for video` status.
 
 The Qt video path uses an internal UDP frame assembler with duplicate-packet filtering, partial-frame
 timeouts, existing XOR FEC recovery, dropped-frame counters, and keyframe requests after repeated

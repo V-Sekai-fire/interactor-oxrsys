@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MPL-2.0
 #
 # Build the Windows runtime and the Qt simulator with MSVC, taking CMake, Ninja and
-# Qt 6 from the pixi environment in pixi.toml. Video is NVENC AV1 in the runtime and
-# NVDEC in the simulator, both loaded from the NVIDIA driver at run time; no FFmpeg.
+# Qt 6 from the pixi environment in pixi.toml. Video is PyroWave in the runtime and the
+# simulator, linked statically into both; no FFmpeg.
 # Nothing is registered: point XR_RUNTIME_JSON at
 # build/windows/runtime/oxrsys-runtime.json per process.
 param(
@@ -38,7 +38,7 @@ try {
     pixi run cmake --build $build
     if ($LASTEXITCODE -ne 0) { throw "build failed" }
     # Deploy the Qt frontends: windeployqt, then any other pixi-env DLL they pull in.
-    # The runtime DLL needs nothing beside it (the driver provides NVENC).
+    # The runtime DLL needs nothing beside it (PyroWave is linked in).
     $envBin = (pixi run cmd /c "echo %CONDA_PREFIX%" | Select-Object -Last 1).Trim() + '\Library\bin'
     $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
     function Copy-Dependencies([string]$binary) {
