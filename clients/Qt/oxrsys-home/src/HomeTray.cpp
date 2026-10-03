@@ -88,29 +88,59 @@ QJsonObject openVrPaths()
     return readJson(qEnvironmentVariable("LOCALAPPDATA") + "/openvr/openvrpaths.vrpath");
 }
 
-// Registers the installed driver with SteamVR's own vrpathreg; per-user, so no prompt.
-void registerSteamVrDriver()
+// The user's unbind is remembered, so Home starting again does not undo it.
+bool bindingWanted()
 {
-    const QJsonObject paths = openVrPaths();
-    const QString steamVr = paths.value("runtime").toArray().first().toString();
-    if (steamVr.isEmpty() || !QFileInfo::exists(installedDriverFolder()))
+    return !QSettings("OXRSys", "HomeQt").value("tray/unbound", false).toBool();
+}
+
+void runVrPathReg(const QString& verb, const QString& folder)
+{
+    const QString steamVr = openVrPaths().value("runtime").toArray().first().toString();
+    if (steamVr.isEmpty())
     {
         return;
-    }
-    for (const QJsonValue& driver : paths.value("external_drivers").toArray())
-    {
-        if (QDir::toNativeSeparators(driver.toString()).compare(installedDriverFolder(), Qt::CaseInsensitive) == 0)
-        {
-            return;
-        }
     }
     QProcess process;
 #if defined(Q_OS_WIN)
     process.setCreateProcessArgumentsModifier(
         [](QProcess::CreateProcessArguments* args) { args->flags |= CREATE_NO_WINDOW; });
 #endif
-    process.start(steamVr + "/bin/win64/vrpathreg.exe", {"adddriver", installedDriverFolder()});
+    process.start(steamVr + "/bin/win64/vrpathreg.exe", {verb, folder});
     process.waitForFinished(15000);
+}
+
+// Registers the installed driver with SteamVR's own vrpathreg; per-user, so no prompt.
+void registerSteamVrDriver()
+{
+    if (!bindingWanted() || !QFileInfo::exists(installedDriverFolder()))
+    {
+        return;
+    }
+    for (const QJsonValue& driver : openVrPaths().value("external_drivers").toArray())
+    {
+        if (QDir::toNativeSeparators(driver.toString()).compare(installedDriverFolder(), Qt::CaseInsensitive) == 0)
+        {
+            return;
+        }
+    }
+    runVrPathReg("adddriver", installedDriverFolder());
+}
+
+// Removes every registered folder of this driver, including ones a development build registered.
+int unregisterSteamVrDriver()
+{
+    int removed = 0;
+    for (const QJsonValue& driver : openVrPaths().value("external_drivers").toArray())
+    {
+        const QString folder = QDir::toNativeSeparators(driver.toString());
+        if (QFileInfo(folder).fileName().compare("oxrsys", Qt::CaseInsensitive) == 0)
+        {
+            runVrPathReg("removedriver", folder);
+            ++removed;
+        }
+    }
+    return removed;
 }
 
 // SteamVR picks one headset driver among those that load; forcedDriver makes it ours while OXRSys is
@@ -225,6 +255,9 @@ HomeTray::HomeTray(QString runtimeStatusPath, QString logDirectory, std::functio
     status_->setEnabled(false);
     menu_->addSeparator();
     runtimeMenu_ = menu_->addMenu("Default OpenXR runtime");
+    QAction* unbindAction = menu_->addAction("Unbind OXRSys");
+    unbindAction->setToolTip("Hand the OpenXR default and the SteamVR headset back, and stop registering the driver");
+    connect(unbindAction, &QAction::triggered, this, &HomeTray::unbind);
     connect(menu_->addAction("Open simulator"), &QAction::triggered, this, [openSimulator]() { openSimulator(); });
     connect(menu_->addAction("Open logs"), &QAction::triggered, this,
             [this]() { revealInFileManager(logDirectory_); });
@@ -342,6 +375,11 @@ void HomeTray::rebuildRuntimeMenu()
 
 void HomeTray::makeDefaultRuntime(const QString& manifest)
 {
+    if (manifest.compare(installedRuntimeManifest(), Qt::CaseInsensitive) == 0)
+    {
+        QSettings("OXRSys", "HomeQt").setValue("tray/unbound", false);
+        registerSteamVrDriver();
+    }
 #if defined(Q_OS_WIN)
     const QString key = "HKLM:\\SOFTWARE\\Khronos\\OpenXR\\1";
     const QString active = registryValue("ActiveRuntime");
@@ -361,5 +399,55 @@ void HomeTray::makeDefaultRuntime(const QString& manifest)
 #else
     Q_UNUSED(manifest);
 #endif
+    refresh();
+}
+
+// Undoes everything binding did: the OpenXR default goes back to the previous runtime (or is cleared)
+// and ours leaves the loader's list, the driver leaves SteamVR's list, and SteamVR's headset choice is
+// handed back. Picking OXRSys in the runtime menu binds it again.
+void HomeTray::unbind()
+{
+    QSettings("OXRSys", "HomeQt").setValue("tray/unbound", true);
+    const int drivers = unregisterSteamVrDriver();
+    useSteamVrHeadset(false);
+    QString runtime = "left as it was";
+#if defined(Q_OS_WIN)
+    const QString ours = installedRuntimeManifest();
+    const QString active = QDir::toNativeSeparators(registryValue("ActiveRuntime"));
+    const QString previous = QDir::toNativeSeparators(registryValue("PreviousActiveRuntime"));
+    const bool listed = availableRuntimes().contains(ours, Qt::CaseInsensitive);
+    const bool activeIsOurs = active.compare(ours, Qt::CaseInsensitive) == 0;
+    if (activeIsOurs || listed)
+    {
+        const QString key = "HKLM:\\SOFTWARE\\Khronos\\OpenXR\\1";
+        QString script = QString("Remove-ItemProperty -Path '%1\\AvailableRuntimes' -Name '%2' -ErrorAction SilentlyContinue; ")
+                             .arg(key, ours);
+        const bool restore = activeIsOurs && !previous.isEmpty() &&
+                             previous.compare(ours, Qt::CaseInsensitive) != 0 && QFileInfo::exists(previous);
+        if (restore)
+        {
+            script += QString("Set-ItemProperty -Path '%1' -Name ActiveRuntime -Value '%2'").arg(key, previous);
+        }
+        else if (activeIsOurs)
+        {
+            script += QString("Remove-ItemProperty -Path '%1' -Name ActiveRuntime -ErrorAction SilentlyContinue").arg(key);
+        }
+        if (runElevatedPowerShell(script))
+        {
+            runtime = restore ? QString("back to %1").arg(runtimeName(previous)) : activeIsOurs ? "cleared" : "left as it was";
+        }
+        else
+        {
+            runtime = "unchanged: the administrator prompt was declined";
+        }
+    }
+#endif
+    if (icon_ != nullptr)
+    {
+        icon_->showMessage("OXRSys unbound",
+                           QString("Default OpenXR runtime %1; %2 SteamVR driver registration(s) removed. Restart SteamVR to finish.")
+                               .arg(runtime)
+                               .arg(drivers));
+    }
     refresh();
 }

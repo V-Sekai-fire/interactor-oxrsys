@@ -9,7 +9,8 @@ param(
     [string]$BuildType = "RelWithDebInfo",
     [switch]$Test,
     [switch]$Install,
-    [switch]$Register
+    [switch]$Register,
+    [switch]$Unregister
 )
 
 $ErrorActionPreference = 'Stop'
@@ -130,6 +131,42 @@ try {
             -ArgumentList '-NoProfile', '-EncodedCommand', $encoded
         if ($elevated.ExitCode -ne 0 -or (Get-ItemProperty $key).ActiveRuntime -ne $json) {
             throw "runtime registration failed"
+        }
+    }
+
+    # -Unregister undoes -Register: the driver leaves SteamVR's list, SteamVR's forced headset is cleared
+    # if it is ours, and the OpenXR default goes back to the previous runtime (UAC) if it is ours.
+    if ($Unregister) {
+        $vrpaths = Join-Path $env:LOCALAPPDATA 'openvr\openvrpaths.vrpath'
+        if (Test-Path $vrpaths) {
+            $paths = Get-Content -Raw $vrpaths | ConvertFrom-Json
+            $vrpathreg = Join-Path $paths.runtime[0] 'bin\win64\vrpathreg.exe'
+            foreach ($existing in @($paths.external_drivers)) {
+                if ($existing -and (Split-Path -Leaf $existing) -eq 'oxrsys') { & $vrpathreg removedriver $existing | Out-Null }
+            }
+            $settingsPath = Join-Path $paths.config[0] 'steamvr.vrsettings'
+            if (Test-Path $settingsPath) {
+                $settings = Get-Content -Raw $settingsPath | ConvertFrom-Json
+                if ($settings.steamvr.forcedDriver -eq 'oxrsys') {
+                    $settings.steamvr.PSObject.Properties.Remove('forcedDriver')
+                    [System.IO.File]::WriteAllText($settingsPath, ($settings | ConvertTo-Json -Depth 20))
+                }
+            }
+        }
+        $json = Join-Path $env:LOCALAPPDATA 'OXRSys\runtime\oxrsys-runtime.json'
+        $key = 'HKLM:\SOFTWARE\Khronos\OpenXR\1'
+        $current = Get-ItemProperty $key -ErrorAction SilentlyContinue
+        if ($current.ActiveRuntime -eq $json -or ((Get-ItemProperty "$key\AvailableRuntimes" -ErrorAction SilentlyContinue).PSObject.Properties.Name -contains $json)) {
+            $commands = @("Remove-ItemProperty -Path '$key\AvailableRuntimes' -Name '$json' -ErrorAction SilentlyContinue")
+            if ($current.ActiveRuntime -eq $json) {
+                if ($current.PreviousActiveRuntime -and $current.PreviousActiveRuntime -ne $json -and (Test-Path $current.PreviousActiveRuntime)) {
+                    $commands += "Set-ItemProperty -Path '$key' -Name ActiveRuntime -Value '$($current.PreviousActiveRuntime)'"
+                } else {
+                    $commands += "Remove-ItemProperty -Path '$key' -Name ActiveRuntime -ErrorAction SilentlyContinue"
+                }
+            }
+            $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($commands -join '; '))
+            Start-Process powershell -Verb RunAs -WindowStyle Hidden -Wait -ArgumentList '-NoProfile', '-EncodedCommand', $encoded
         }
     }
 }
