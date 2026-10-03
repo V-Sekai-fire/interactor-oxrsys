@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Builds the Windows runtime, driver, Home and the simulator with MSVC and pixi's Qt, then packs
+# and test-signs one MSIX and checks its contents.
+name: windows-msix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-msix-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  msix:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.8.8
+        with:
+          cache: true
+      - name: Build
+        shell: pwsh
+        run: scripts/windows_build.ps1 -BuildType Release
+      - name: PyroWave round trip, unchecked without a GPU
+        run: echo "UNCHECKED 1 - oxrsys_pyrowave_tests needs a Vulkan GPU, which this runner lacks; it runs on the Windows desk"
+      - name: Pack and test-sign the MSIX
+        shell: pwsh
+        run: scripts/windows_package_msix.ps1 -OutDir dist
+      - name: Check the MSIX
+        shell: pwsh
+        run: Get-ChildItem dist/*.msix | ForEach-Object { scripts/windows_check_msix.ps1 $_.FullName; if ($LASTEXITCODE) { exit 1 } }
+      - name: Check control, a package without the runtime fails
+        shell: pwsh
+        run: |
+          $msix = (Get-ChildItem dist/*.msix)[0].FullName
+          Copy-Item $msix control.zip
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::Open((Resolve-Path control.zip), 'Update')
+          $zip.GetEntry('runtime/liboxrsys-runtime.dll').Delete()
+          $zip.Dispose()
+          scripts/windows_check_msix.ps1 control.zip
+          if ($LASTEXITCODE -eq 0) { Write-Host "control passed but must fail"; exit 1 }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oxrsys-windows-msix
+          path: |
+            dist/*.msix
+            dist/*.cer
