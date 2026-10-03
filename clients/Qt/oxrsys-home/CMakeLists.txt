@@ -52,6 +52,9 @@ target_include_directories(oxrsys-home PRIVATE
     ${OXRSYS_PROTOCOL_INCLUDE_DIR}
 )
 
+# A GUI app on Windows: it lives in the tray, so it opens no console window.
+set_target_properties(oxrsys-home PROPERTIES WIN32_EXECUTABLE TRUE)
+
 target_link_libraries(oxrsys-home PRIVATE
     Qt6::Widgets
     Qt6::Network
