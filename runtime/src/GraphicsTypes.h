@@ -24,6 +24,7 @@ struct VulkanGraphicsContext
 struct D3D11GraphicsContext
 {
     void* device = nullptr; // the app's ID3D11Device
+    bool encoderDevice = false; // device is the runtime's own, used by the encoder as is
 };
 
 struct GraphicsContext

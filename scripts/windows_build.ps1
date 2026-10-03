@@ -75,19 +75,42 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "tests failed" }
     }
 
-    # -Install copies the runtime to a stable per-user folder with a manifest relative to it;
-    # -Register makes that the machine's active OpenXR runtime (UAC), keeping the old one as previous.
+    # -Install copies the runtime and the PC VR driver to stable per-user folders; -Register makes the
+    # runtime the machine's active OpenXR runtime (UAC, only when it changes) and registers the driver.
     if ($Install -or $Register) {
         $runtimeDir = Join-Path $env:LOCALAPPDATA 'OXRSys\runtime'
         New-Item -ItemType Directory -Force $runtimeDir | Out-Null
         Copy-Item -Force (Join-Path $build 'runtime\liboxrsys-runtime.dll') $runtimeDir
         $manifest = '{"file_format_version": "1.0.0", "runtime": {"name": "OXRSys Runtime", "library_path": ".\\liboxrsys-runtime.dll"}}'
         [System.IO.File]::WriteAllText((Join-Path $runtimeDir 'oxrsys-runtime.json'), $manifest)
+
+        $driverDir = Join-Path $env:LOCALAPPDATA 'OXRSys\driver\oxrsys'
+        New-Item -ItemType Directory -Force (Join-Path $driverDir 'bin\win64') | Out-Null
+        Copy-Item -Force (Join-Path $build 'driver\oxrsys\driver.vrdrivermanifest') $driverDir
+        Copy-Item -Force (Join-Path $build 'driver\oxrsys\bin\win64\driver_oxrsys.dll') (Join-Path $driverDir 'bin\win64')
     }
     if ($Register) {
+        # The driver is registered through the PC VR runtime's own vrpathreg, found from its paths file;
+        # any other folder registered under the same driver name is removed first.
+        $vrpaths = Join-Path $env:LOCALAPPDATA 'openvr\openvrpaths.vrpath'
+        if (Test-Path $vrpaths) {
+            $paths = Get-Content -Raw $vrpaths | ConvertFrom-Json
+            $vrpathreg = Join-Path $paths.runtime[0] 'bin\win64\vrpathreg.exe'
+            foreach ($existing in @($paths.external_drivers)) {
+                if ($existing -and (Split-Path -Leaf $existing) -eq 'oxrsys' -and $existing -ne $driverDir) {
+                    & $vrpathreg removedriver $existing | Out-Null
+                }
+            }
+            & $vrpathreg adddriver $driverDir | Out-Null
+            if (-not ((Get-Content -Raw $vrpaths | ConvertFrom-Json).external_drivers -contains $driverDir)) {
+                throw "driver registration failed"
+            }
+        }
+
         $json = Join-Path $runtimeDir 'oxrsys-runtime.json'
         $key = 'HKLM:\SOFTWARE\Khronos\OpenXR\1'
         $previous = (Get-ItemProperty $key -ErrorAction SilentlyContinue).ActiveRuntime
+        if ($previous -eq $json) { return }
         $commands = @("New-Item -Force -Path '$key\AvailableRuntimes' | Out-Null",
                       "Set-ItemProperty -Path '$key\AvailableRuntimes' -Name '$json' -Value 0 -Type DWord",
                       "Set-ItemProperty -Path '$key' -Name ActiveRuntime -Value '$json'")

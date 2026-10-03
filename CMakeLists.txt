@@ -170,6 +170,9 @@ endif()
 
 # --- Our runtime ---
 add_subdirectory(runtime)
+if(WIN32)
+    add_subdirectory(driver)
+endif()
 
 find_package(Vulkan REQUIRED)
 
