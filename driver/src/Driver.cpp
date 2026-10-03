@@ -644,13 +644,11 @@ public:
                       k_unInt32PropertyTag);
         if (gInput != nullptr)
         {
-            gInput->CreateBooleanComponent(c, "/input/trigger/click", &triggerClick_);
-            gInput->CreateScalarComponent(c, "/input/trigger/value", &triggerValue_, VRScalarType_Absolute,
-                                          VRScalarUnits_NormalizedOneSided);
-            gInput->CreateBooleanComponent(c, "/input/grip/click", &gripClick_);
-            gInput->CreateScalarComponent(c, "/input/grip/value", &gripValue_, VRScalarType_Absolute,
-                                          VRScalarUnits_NormalizedOneSided);
-            gInput->CreateBooleanComponent(c, "/input/system/click", &systemClick_);
+            for (size_t i = 0; i < kBooleans.size(); ++i)
+                gInput->CreateBooleanComponent(c, kBooleans[i], &booleans_[i]);
+            for (size_t i = 0; i < kScalars.size(); ++i)
+                gInput->CreateScalarComponent(c, kScalars[i], &scalars_[i], VRScalarType_Absolute,
+                                              i >= 3 ? VRScalarUnits_NormalizedTwoSided : VRScalarUnits_NormalizedOneSided);
         }
         return VRInitError_None;
     }
@@ -690,24 +688,38 @@ public:
         gHost->TrackedDevicePoseUpdated(id_, pose_, sizeof(pose_));
         if (gInput != nullptr)
         {
-            gInput->UpdateBooleanComponent(triggerClick_, trigger > 0.5f, 0.0);
-            gInput->UpdateScalarComponent(triggerValue_, trigger, 0.0);
-            gInput->UpdateBooleanComponent(gripClick_, grip > 0.5f, 0.0);
-            gInput->UpdateScalarComponent(gripValue_, grip, 0.0);
-            gInput->UpdateBooleanComponent(systemClick_, !left_ && (packet.buttonState & oxr::protocol::BUTTON_MENU) != 0, 0.0);
+            using namespace oxr::protocol;
+            const uint32_t b = packet.buttonState;
+            const float* stick = left_ ? packet.leftThumbstick : packet.rightThumbstick;
+            const bool stickClick = (b & (left_ ? BUTTON_LEFT_THUMBSTICK : BUTTON_RIGHT_THUMBSTICK)) != 0;
+            const bool stickTouch = stickClick || stick[0] != 0.0f || stick[1] != 0.0f;
+            const bool lower = (b & (left_ ? BUTTON_X : BUTTON_A)) != 0;
+            const bool upper = (b & (left_ ? BUTTON_Y : BUTTON_B)) != 0;
+            const bool values[] = {trigger > 0.5f, trigger > 0.0f, grip > 0.5f, grip > 0.0f, stickClick, stickTouch,
+                                   lower, lower, upper, upper, !left_ && (b & BUTTON_MENU) != 0};
+            for (size_t i = 0; i < kBooleans.size(); ++i)
+                gInput->UpdateBooleanComponent(booleans_[i], values[i], 0.0);
+            const float scalars[] = {trigger, grip, grip, stick[0], stick[1]};
+            for (size_t i = 0; i < kScalars.size(); ++i)
+                gInput->UpdateScalarComponent(scalars_[i], scalars[i], 0.0);
         }
     }
 
 private:
     static constexpr uint32_t kInvalidId = 0xFFFFFFFFu;
+    // The input layout of the common handheld type in the profile's compatibility mode, so apps
+    // without bindings for this controller use theirs for that one.
+    static constexpr std::array<const char*, 11> kBooleans = {
+        "/input/trigger/click", "/input/trigger/touch", "/input/grip/click", "/input/grip/touch",
+        "/input/thumbstick/click", "/input/thumbstick/touch", "/input/a/click", "/input/a/touch",
+        "/input/b/click", "/input/b/touch", "/input/system/click"};
+    static constexpr std::array<const char*, 5> kScalars = {
+        "/input/trigger/value", "/input/grip/value", "/input/grip/force", "/input/thumbstick/x", "/input/thumbstick/y"};
     bool left_;
     uint32_t id_ = kInvalidId;
     DriverPose_t pose_ = {};
-    VRInputComponentHandle_t triggerClick_ = 0;
-    VRInputComponentHandle_t triggerValue_ = 0;
-    VRInputComponentHandle_t gripClick_ = 0;
-    VRInputComponentHandle_t gripValue_ = 0;
-    VRInputComponentHandle_t systemClick_ = 0;
+    std::array<VRInputComponentHandle_t, kBooleans.size()> booleans_ = {};
+    std::array<VRInputComponentHandle_t, kScalars.size()> scalars_ = {};
 };
 
 class Hmd final : public ITrackedDeviceServerDriver

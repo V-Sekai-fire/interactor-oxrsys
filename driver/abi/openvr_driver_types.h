@@ -55,6 +55,7 @@ enum EVRScalarType
 enum EVRScalarUnits
 {
     VRScalarUnits_NormalizedOneSided = 0,
+    VRScalarUnits_NormalizedTwoSided = 1,
 };
 
 enum ETrackingResult
