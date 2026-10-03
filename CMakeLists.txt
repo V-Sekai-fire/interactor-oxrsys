@@ -168,42 +168,6 @@ if(NOT APPLE)
     endif()
 endif()
 
-# CineForm SDK (Apache-2.0 OR MIT): the Linux runtime's streaming video codec.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    FetchContent_Declare(
-        cineform_sdk
-        GIT_REPOSITORY https://github.com/V-Sekai-fire/cineform-sdk.git
-        GIT_TAG 9c2973f3b66ab20dcef3bd7b05f84be23fa8a080
-    )
-    set(BUILD_LIBS ON CACHE BOOL "" FORCE)
-    set(BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-    set(BUILD_STATIC ON CACHE BOOL "" FORCE)
-    set(BUILD_SEPARATED OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(cineform_sdk)
-    set_target_properties(CFHDCodecStatic PROPERTIES
-        POSITION_INDEPENDENT_CODE ON
-        C_VISIBILITY_PRESET hidden
-        CXX_VISIBILITY_PRESET hidden
-        CXX_STANDARD 17
-    )
-    if(CMAKE_C_COMPILER_ID MATCHES "Clang")
-        target_compile_options(CFHDCodecStatic PRIVATE -Wno-incompatible-pointer-types)
-    endif()
-    # The encoder runs every streamed frame, so it is optimized in Debug builds too.
-    target_compile_options(CFHDCodecStatic PRIVATE $<$<CONFIG:Debug>:-O2>)
-
-    # The SDK applies libuuid and threads only to its own test tool.
-    find_package(Threads REQUIRED)
-    find_library(OXRSYS_UUID_LIBRARY NAMES uuid REQUIRED)
-    add_library(oxrsys_cineform INTERFACE)
-    target_include_directories(oxrsys_cineform INTERFACE ${cineform_sdk_SOURCE_DIR}/Common)
-    target_link_libraries(oxrsys_cineform INTERFACE
-        CFHDCodecStatic
-        ${OXRSYS_UUID_LIBRARY}
-        Threads::Threads
-    )
-endif()
-
 # --- Our runtime ---
 add_subdirectory(runtime)
 
@@ -361,37 +325,6 @@ if(NOT APPLE)
     add_test(NAME oxrsys_pyrowave_tests COMMAND oxrsys_pyrowave_tests)
     set_tests_properties(oxrsys_pyrowave_tests PROPERTIES TIMEOUT 120)
     list(APPEND OXRSYS_RUNTIME_TEST_TARGETS oxrsys_pyrowave_tests)
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    add_executable(oxrsys_cineform_tests
-        tests/TestCineFormRoundTrip.cpp
-        runtime/src/CineFormFrameCodec.cpp
-        runtime/src/CineFormVideoEncoder.cpp
-        runtime/src/Config.cpp
-        runtime/src/RuntimePlatform.cpp
-    )
-    target_include_directories(oxrsys_cineform_tests PRIVATE
-        runtime/src
-        common/protocol/include
-        ${openxr_SOURCE_DIR}/include
-        ${Vulkan_INCLUDE_DIRS}
-    )
-    target_link_libraries(oxrsys_cineform_tests PRIVATE
-        Catch2::Catch2WithMain
-        spdlog::spdlog
-        oxrsys_cineform
-        ${CMAKE_DL_LIBS}
-    )
-    target_compile_definitions(oxrsys_cineform_tests PRIVATE
-        XR_USE_GRAPHICS_API_VULKAN
-    )
-    add_test(NAME oxrsys_cineform_tests COMMAND oxrsys_cineform_tests)
-    set_tests_properties(oxrsys_cineform_tests PROPERTIES
-        ENVIRONMENT "${OXRSYS_ISOLATED_TEST_ENV}"
-        TIMEOUT 120
-    )
-    list(APPEND OXRSYS_RUNTIME_TEST_TARGETS oxrsys_cineform_tests)
 endif()
 
 if(APPLE)

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 #
-# Builds the Linux runtime with its CineForm encoder, runs the CineForm round trip
-# with its corrupted-sample controls, and checks the runtime links no FFmpeg library.
+# Builds the Linux runtime with its PyroWave encoder and the PyroWave round trip test,
+# and checks the runtime links no FFmpeg library.
 name: linux-runtime
 
 on:
@@ -28,9 +28,7 @@ jobs:
       - name: Configure
         run: cmake --preset linux-native -DOXRSYS_BUILD_QT_FRONTENDS=OFF
       - name: Build
-        run: cmake --build build/linux-native --target oxrsys_runtime oxrsys_cineform_tests oxrsys_pyrowave_tests
-      - name: CineForm round trip
-        run: ctest --test-dir build/linux-native -R '^oxrsys_cineform_tests$' --output-on-failure -V
+        run: cmake --build build/linux-native --target oxrsys_runtime oxrsys_pyrowave_tests
       - name: PyroWave round trip, unchecked without a GPU
         run: echo "UNCHECKED 1 - oxrsys_pyrowave_tests needs a Vulkan GPU, which this runner lacks, and PyroWave refuses software rasterizers; it runs on the Windows desk"
       - name: No FFmpeg in the runtime

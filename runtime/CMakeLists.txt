@@ -27,8 +27,7 @@ if(APPLE)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(APPEND OXRSYS_RUNTIME_SOURCES
         src/SwapchainVulkan.cpp
-        src/CineFormFrameCodec.cpp
-        src/CineFormVideoEncoder.cpp
+        src/PyroWaveVideoEncoderLinux.cpp
     )
 elseif(WIN32)
     # Vulkan on Windows goes through shared D3D11 textures, after VirtualDesktop-OpenXR.
@@ -56,13 +55,7 @@ set(OXRSYS_RUNTIME_LINK_LIBRARIES
     ${CMAKE_DL_LIBS}
 )
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    list(APPEND OXRSYS_RUNTIME_LINK_LIBRARIES
-        oxrsys_cineform
-    )
-endif()
-
-if(APPLE)
+if(NOT WIN32)
     list(APPEND OXRSYS_RUNTIME_LINK_LIBRARIES
         oxrsys_pyrowave
     )
@@ -136,8 +129,8 @@ set_target_properties(oxrsys_runtime PROPERTIES
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # Keep the CineForm SDK's symbols out of the runtime's exports, so a host that
-    # loads its own copy of the SDK does not bind to ours.
+    # Keep the static libraries' symbols (PyroWave, Granite) out of the runtime's exports, so a
+    # host that loads its own copy does not bind to ours.
     target_link_options(oxrsys_runtime PRIVATE "LINKER:--exclude-libs,ALL")
 endif()
 

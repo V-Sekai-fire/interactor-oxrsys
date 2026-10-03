@@ -18,7 +18,7 @@
  *
  * Apple builds encode H.265 with VideoToolbox and Metal textures, or PyroWave when
  * streaming.codec = "pyrowave". Linux builds
- * encode CineForm with the CineForm SDK and keep backend-specific graphics
+ * encode PyroWave through its Vulkan C API and keep backend-specific graphics
  * readback state behind GraphicsContext.
  */
 class VideoEncoder
@@ -92,7 +92,7 @@ public:
     bool IsInitialized() const
     {
         return videoToolbox_.session != nullptr || pyrowave_.encoder != nullptr ||
-               cineform_.codec != nullptr || nvenc_ != nullptr;
+               nvenc_ != nullptr;
     }
 
     // Stats
@@ -143,16 +143,9 @@ private:
     bool InitializePyroWave(const GraphicsContext& graphicsContext);
     void EncodePyroWave(void* pixelBuffer, void* context);
 
-    struct CineFormState
-    {
-        void* codec = nullptr;        // CineFormFrameCodec*
-        std::vector<uint8_t> frame;   // BGRA source frame
-    };
-
     GraphicsContext graphicsContext_ = {};
     VideoToolboxState videoToolbox_ = {};
     PyroWaveState pyrowave_ = {};
-    CineFormState cineform_ = {};
     void* nvenc_ = nullptr;           // NvencState* (NvencVideoEncoder.cpp)
 
     uint32_t width_ = 0;       // Total encoded width (may be 2x eye width for stereo)
