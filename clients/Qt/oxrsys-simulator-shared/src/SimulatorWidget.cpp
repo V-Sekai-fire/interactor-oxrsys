@@ -544,6 +544,14 @@ SimulatorWidget::SimulatorWidget(QWidget* parent)
     connect(searchButton_, &QPushButton::clicked, this, &SimulatorWidget::startDiscovery);
     connect(connectButton_, &QPushButton::clicked, this, &SimulatorWidget::connectToDiscoveredRuntime);
     connect(disconnectButton_, &QPushButton::clicked, this, &SimulatorWidget::disconnectFromRuntime);
+    // Switching to another program releases the mouse, as a 3D game does; clicking the preview takes it back.
+    connect(qApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
+        if (state != Qt::ApplicationActive)
+        {
+            setMouseCaptured(false, "application inactive");
+            resetInputState();
+        }
+    });
     connect(simulatorFovSlider_, &QSlider::valueChanged, this, [this](int value) {
         simulatorFovDegrees_ = value;
         simulatorFovValueLabel_->setText(QString("%1 deg").arg(value));
@@ -1015,7 +1023,7 @@ void SimulatorWidget::focusOutEvent(QFocusEvent* event)
 bool SimulatorWidget::focusStaysInside() const
 {
     const QWidget* focused = QApplication::focusWidget();
-    return focused != nullptr && (focused == this || isAncestorOf(focused));
+    return isActiveWindow() && focused != nullptr && (focused == this || isAncestorOf(focused));
 }
 
 void SimulatorWidget::updateControls()
@@ -1418,6 +1426,11 @@ void SimulatorWidget::setMouseCaptured(bool captured, const char* reason)
 // Captured look warps the cursor back to the preview's centre, so turning never stops at a screen edge.
 void SimulatorWidget::recentreCapturedCursor()
 {
+    if (!isActiveWindow())
+    {
+        setMouseCaptured(false, "window inactive");
+        return;
+    }
     const QPoint centre = previewWidget_->rect().center();
     if (lastMousePosition_.toPoint() != centre || !hasLastMousePosition_)
     {
