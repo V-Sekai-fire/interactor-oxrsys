@@ -327,6 +327,30 @@ if(NOT APPLE)
     list(APPEND OXRSYS_RUNTIME_TEST_TARGETS oxrsys_pyrowave_tests)
 endif()
 
+if(WIN32)
+    add_executable(oxrsys_runtime_d3d11_tests tests/TestRuntimeApiD3D11.cpp)
+    target_include_directories(oxrsys_runtime_d3d11_tests PRIVATE ${openxr_SOURCE_DIR}/include)
+    target_link_libraries(oxrsys_runtime_d3d11_tests PRIVATE
+        Catch2::Catch2WithMain
+        OpenXR::openxr_loader
+        d3d11
+        dxgi
+    )
+    target_compile_definitions(oxrsys_runtime_d3d11_tests PRIVATE
+        XR_USE_GRAPHICS_API_D3D11
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+    )
+    add_dependencies(oxrsys_runtime_d3d11_tests oxrsys_runtime)
+    add_test(NAME oxrsys_runtime_d3d11_tests COMMAND oxrsys_runtime_d3d11_tests)
+    set_tests_properties(oxrsys_runtime_d3d11_tests PROPERTIES
+        ENVIRONMENT
+            "APPDATA=${OXRSYS_TEST_APPDATA};XR_RUNTIME_JSON=$<TARGET_FILE_DIR:oxrsys_runtime>/oxrsys-runtime.json"
+        TIMEOUT 120
+    )
+    list(APPEND OXRSYS_RUNTIME_TEST_TARGETS oxrsys_runtime_d3d11_tests)
+endif()
+
 if(APPLE)
     add_executable(oxrsys_pyrowave_tests
         tests/TestPyroWaveRoundTrip.mm
