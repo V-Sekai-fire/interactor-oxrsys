@@ -374,7 +374,8 @@ public:
         badges.push_back(renderBadge(videoBadgeRect(bounds), dpr,
                                      [this](QPainter& p, const QRectF& r) { drawVideoBadge(p, r); }));
 
-        const QPointF c = reticleCenter(bounds);
+        // Over video the game already turns the view, so the reticle stays at the centre.
+        const QPointF c = bounds.center();
         const QRectF segments[] = {
             {c.x() - 16, c.y() - 0.75, 12, 1.5}, {c.x() + 4, c.y() - 0.75, 12, 1.5},
             {c.x() - 0.75, c.y() - 16, 1.5, 12}, {c.x() - 0.75, c.y() + 4, 1.5, 12},
