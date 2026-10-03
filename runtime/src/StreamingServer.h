@@ -169,7 +169,9 @@ private:
     void HandleClientConnect(const oxr::protocol::ClientConnect& clientConnect,
                              const sockaddr_in& clientAddr);
     void HandleUsbClientConnect(const oxr::protocol::ClientConnect& clientConnect);
-    void HandleClientDisconnect();
+    void HandleClientDisconnect(const char* reason = "client closed its transport");
+    void CheckClientKeepAlive();
+    bool IsCurrentClientAddress(const sockaddr_in& addr) const;
     void HandleLatencyReport(const oxr::protocol::LatencyReport& report);
     void HandleKeyframeRequest(const oxr::protocol::RequestKeyframe& request);
     void HandleStreamConfigAck(const oxr::protocol::StreamConfigAck& ack);
@@ -264,6 +266,7 @@ private:
     uint16_t clientPort_ = 0;
     std::string clientName_;
     mutable std::mutex clientMutex_;
+    std::atomic<int64_t> clientConnectedNs_{0};
 
     // Threads
     std::thread broadcastThread_;

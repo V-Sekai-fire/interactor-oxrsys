@@ -403,6 +403,7 @@ void TrackingReceiver::SetPredictionHorizonMs(float predictionHorizonMs)
 void TrackingReceiver::StorePacket(const oxr::protocol::TrackingPacket& packet, int64_t receiveTimeNs)
 {
     oxr::protocol::TrackingPacket normalizedPacket = packet;
+    lastPacketReceiveNs_.store(receiveTimeNs);
 
     {
         std::lock_guard<std::mutex> lock(poseMutex_);
