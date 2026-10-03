@@ -129,6 +129,7 @@ private:
     uint64_t lastKeyframeRequestTimeNs_ = 0;
     VideoFrameAssembler videoAssembler_;
     PyroWaveDecoder pyrowave_;
+    bool videoViewCreated_ = false;
     bool autoConnect_ = false;
     QString snapshotPath_;
     QElapsedTimer poseClock_;

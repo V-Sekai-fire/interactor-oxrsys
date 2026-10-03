@@ -5,8 +5,15 @@
 #include <volk.h>
 #include <pyrowave.h>
 
+#include <QCoreApplication>
+#include <QPointer>
+#include <QVulkanInstance>
+#include <QWidget>
+#include <QWindow>
+
 #include "yuv420_to_rgbx_spv.h"
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -36,14 +43,67 @@ uint32_t PlaneHeight(int plane, int height)
     return uint32_t(plane == 0 ? height : height / 2);
 }
 
+class PyroWaveView final : public QWindow
+{
+public:
+    PyroWaveView(QVulkanInstance* instance, QWidget* inputTarget)
+        : inputTarget_(inputTarget)
+    {
+        setSurfaceType(QSurface::VulkanSurface);
+        setVulkanInstance(instance);
+        setFlag(Qt::WindowDoesNotAcceptFocus);
+    }
+
+protected:
+    bool event(QEvent* event) override
+    {
+        switch (event->type())
+        {
+            case QEvent::MouseButtonPress:
+            case QEvent::MouseButtonRelease:
+            case QEvent::MouseButtonDblClick:
+            case QEvent::MouseMove:
+            case QEvent::Wheel:
+            case QEvent::KeyPress:
+            case QEvent::KeyRelease:
+                if (inputTarget_ != nullptr)
+                {
+                    return QCoreApplication::sendEvent(inputTarget_, event);
+                }
+                break;
+            default:
+                break;
+        }
+        return QWindow::event(event);
+    }
+
+private:
+    QPointer<QWidget> inputTarget_;
+};
+
 } // namespace
 
 struct PyroWaveDecoder::Gpu
 {
+    QVulkanInstance instance;
+    std::vector<QByteArray> extensionNames;
+    std::vector<const char*> extensionPointers;
+    VkApplicationInfo appInfo{VK_STRUCTURE_TYPE_APPLICATION_INFO};
+    VkInstanceCreateInfo instanceInfo{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+    VkPhysicalDeviceVulkan13Features features13{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+    VkPhysicalDeviceVulkan12Features features12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+    VkPhysicalDeviceVulkan11Features features11{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
+    VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+    float queuePriority = 1.0f;
+    VkDeviceQueueCreateInfo queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+    const char* deviceExtension = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+    VkDeviceCreateInfo deviceInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+
     pyrowave_device pyro = nullptr;
     pyrowave_decoder decoder = nullptr;
     VkPhysicalDevice physical = VK_NULL_HANDLE;
     VkDevice device = VK_NULL_HANDLE;
+    uint32_t family = 0;
     VkQueue queue = VK_NULL_HANDLE;
     VkPhysicalDeviceMemoryProperties memoryProperties = {};
 
@@ -62,12 +122,24 @@ struct PyroWaveDecoder::Gpu
     Buffer packed[3]; // plane bytes, four to a word, as the kernel reads them
     Buffer params;
     Buffer rgbx;
+    Image frame; // RGBA8, the blit source; left in TRANSFER_SRC_OPTIMAL
+    bool hasFrame = false;
+
+    QPointer<QWindow> view;
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    VkExtent2D swapExtent = {};
+    std::vector<VkImage> swapImages;
+    std::vector<VkSemaphore> rendered;
+    VkSemaphore acquired = VK_NULL_HANDLE;
 
     ~Gpu()
     {
         releaseFrame();
         if (device != VK_NULL_HANDLE)
         {
+            releaseSwapchain();
+            vkDestroySemaphore(device, acquired, nullptr);
             vkDestroyDescriptorPool(device, descriptorPool, nullptr);
             vkDestroyPipeline(device, pipeline, nullptr);
             vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
@@ -78,6 +150,15 @@ struct PyroWaveDecoder::Gpu
         if (pyro != nullptr)
         {
             pyrowave_device_destroy(pyro);
+        }
+        if (device != VK_NULL_HANDLE)
+        {
+            vkDestroyDevice(device, nullptr);
+        }
+        // The surface belongs to the platform window, which must go before the instance.
+        if (view != nullptr)
+        {
+            view->destroy();
         }
     }
 
@@ -122,17 +203,17 @@ struct PyroWaveDecoder::Gpu
                vkMapMemory(device, out.memory, 0, VK_WHOLE_SIZE, 0, &out.mapped) == VK_SUCCESS;
     }
 
-    bool makeImage(Image& out, uint32_t w, uint32_t h)
+    bool makeImage(Image& out, VkFormat format, uint32_t w, uint32_t h, VkImageUsageFlags usage)
     {
         VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
         info.imageType = VK_IMAGE_TYPE_2D;
-        info.format = VK_FORMAT_R8_UNORM;
+        info.format = format;
         info.extent = {w, h, 1};
         info.mipLevels = 1;
         info.arrayLayers = 1;
         info.samples = VK_SAMPLE_COUNT_1_BIT;
         info.tiling = VK_IMAGE_TILING_OPTIMAL;
-        info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        info.usage = usage;
         if (vkCreateImage(device, &info, nullptr, &out.image) != VK_SUCCESS)
         {
             return false;
@@ -150,6 +231,13 @@ struct PyroWaveDecoder::Gpu
         b = {};
     }
 
+    void releaseImage(Image& image)
+    {
+        vkDestroyImage(device, image.image, nullptr);
+        vkFreeMemory(device, image.memory, nullptr);
+        image = {};
+    }
+
     void releaseFrame()
     {
         if (decoder != nullptr)
@@ -164,9 +252,7 @@ struct PyroWaveDecoder::Gpu
         vkDeviceWaitIdle(device);
         for (Image& image : planes)
         {
-            vkDestroyImage(device, image.image, nullptr);
-            vkFreeMemory(device, image.memory, nullptr);
-            image = {};
+            releaseImage(image);
         }
         for (Buffer& b : packed)
         {
@@ -174,27 +260,62 @@ struct PyroWaveDecoder::Gpu
         }
         releaseBuffer(params);
         releaseBuffer(rgbx);
+        releaseImage(frame);
+        hasFrame = false;
         width = 0;
         height = 0;
     }
 
-    bool initialize()
+    void releaseSwapchain()
     {
-        if (pyrowave_create_default_device(&pyro) != PYROWAVE_SUCCESS || volkInitialize() != VK_SUCCESS)
+        vkDeviceWaitIdle(device);
+        for (VkSemaphore semaphore : rendered)
+        {
+            vkDestroySemaphore(device, semaphore, nullptr);
+        }
+        rendered.clear();
+        swapImages.clear();
+        vkDestroySwapchainKHR(device, swapchain, nullptr);
+        swapchain = VK_NULL_HANDLE;
+        swapExtent = {};
+    }
+
+    bool createDevice()
+    {
+        instance.setApiVersion(QVersionNumber(1, 3));
+        if (volkInitialize() != VK_SUCCESS || !instance.create())
         {
             return false;
         }
-        VkInstance instance = VK_NULL_HANDLE;
-        pyrowave_device_get_vk_device_handles(pyro, &instance, &physical, &device);
-        volkLoadInstanceOnly(instance);
-        volkLoadDevice(device);
-        vkGetPhysicalDeviceMemoryProperties(physical, &memoryProperties);
+        volkLoadInstanceOnly(instance.vkInstance());
 
         uint32_t count = 0;
+        vkEnumeratePhysicalDevices(instance.vkInstance(), &count, nullptr);
+        std::vector<VkPhysicalDevice> devices(count);
+        vkEnumeratePhysicalDevices(instance.vkInstance(), &count, devices.data());
+        for (VkPhysicalDevice candidate : devices)
+        {
+            VkPhysicalDeviceProperties properties = {};
+            vkGetPhysicalDeviceProperties(candidate, &properties);
+            if (properties.apiVersion >= VK_API_VERSION_1_3 &&
+                (physical == VK_NULL_HANDLE || properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU))
+            {
+                physical = candidate;
+                if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+                {
+                    break;
+                }
+            }
+        }
+        if (physical == VK_NULL_HANDLE)
+        {
+            return false;
+        }
+        vkGetPhysicalDeviceMemoryProperties(physical, &memoryProperties);
+
         vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, nullptr);
         std::vector<VkQueueFamilyProperties> families(count);
         vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, families.data());
-        uint32_t family = 0;
         while (family < count && (families[family].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0)
         {
             ++family;
@@ -203,15 +324,75 @@ struct PyroWaveDecoder::Gpu
         {
             return false;
         }
+
+        // Every supported core feature is enabled, which covers PyroWave's subgroup and 8-bit storage needs.
+        features.pNext = &features11;
+        features11.pNext = &features12;
+        features12.pNext = &features13;
+        vkGetPhysicalDeviceFeatures2(physical, &features);
+        features.features.robustBufferAccess = VK_FALSE;
+
+        queueInfo.queueFamilyIndex = family;
+        queueInfo.queueCount = 1;
+        queueInfo.pQueuePriorities = &queuePriority;
+        deviceInfo.pNext = &features;
+        deviceInfo.queueCreateInfoCount = 1;
+        deviceInfo.pQueueCreateInfos = &queueInfo;
+        deviceInfo.enabledExtensionCount = 1;
+        deviceInfo.ppEnabledExtensionNames = &deviceExtension;
+        if (vkCreateDevice(physical, &deviceInfo, nullptr, &device) != VK_SUCCESS)
+        {
+            return false;
+        }
+        volkLoadDevice(device);
         vkGetDeviceQueue(device, family, 0, &queue);
+
+        for (const QByteArray& name : instance.extensions())
+        {
+            extensionNames.push_back(name);
+        }
+        for (const QByteArray& name : extensionNames)
+        {
+            extensionPointers.push_back(name.constData());
+        }
+        appInfo.apiVersion = VK_API_VERSION_1_3;
+        instanceInfo.pApplicationInfo = &appInfo;
+        instanceInfo.enabledExtensionCount = uint32_t(extensionPointers.size());
+        instanceInfo.ppEnabledExtensionNames = extensionPointers.data();
+
+        pyrowave_device_create_queue_info queues = {queue, family, 0};
+        pyrowave_device_create_info info = {};
+        info.GetInstanceProcAddr = vkGetInstanceProcAddr;
+        info.instance = instance.vkInstance();
+        info.physical_device = physical;
+        info.device = device;
+        info.instance_create_info = &instanceInfo;
+        info.device_create_info = &deviceInfo;
+        info.queue_info = &queues;
+        info.queue_info_count = 1;
+        if (pyrowave_create_device(&info, &pyro) != PYROWAVE_SUCCESS)
+        {
+            return false;
+        }
         pyrowave_device_set_queue_type(pyro, VK_QUEUE_GRAPHICS_BIT);
+        return true;
+    }
+
+    bool initialize()
+    {
+        if (!createDevice())
+        {
+            return false;
+        }
 
         VkCommandPoolCreateInfo poolInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
         poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         poolInfo.queueFamilyIndex = family;
         VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        VkSemaphoreCreateInfo semaphoreInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
         if (vkCreateCommandPool(device, &poolInfo, nullptr, &pool) != VK_SUCCESS ||
-            vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS)
+            vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS ||
+            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &acquired) != VK_SUCCESS)
         {
             return false;
         }
@@ -287,15 +468,21 @@ struct PyroWaveDecoder::Gpu
         return vkResetCommandBuffer(cmd, 0) == VK_SUCCESS && vkBeginCommandBuffer(cmd, &begin) == VK_SUCCESS;
     }
 
-    bool submitAndWait()
+    bool submitAndWait(VkSemaphore wait = VK_NULL_HANDLE, VkSemaphore signal = VK_NULL_HANDLE)
     {
         if (vkEndCommandBuffer(cmd) != VK_SUCCESS)
         {
             return false;
         }
+        const VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.waitSemaphoreCount = wait != VK_NULL_HANDLE ? 1 : 0;
+        submit.pWaitSemaphores = &wait;
+        submit.pWaitDstStageMask = &waitStage;
         submit.commandBufferCount = 1;
         submit.pCommandBuffers = &cmd;
+        submit.signalSemaphoreCount = signal != VK_NULL_HANDLE ? 1 : 0;
+        submit.pSignalSemaphores = &signal;
         vkResetFences(device, 1, &fence);
         return vkQueueSubmit(queue, 1, &submit, fence) == VK_SUCCESS &&
                vkWaitForFences(device, 1, &fence, VK_TRUE, 1'000'000'000ull) == VK_SUCCESS;
@@ -307,6 +494,21 @@ struct PyroWaveDecoder::Gpu
         memory.srcAccessMask = srcAccess;
         memory.dstAccessMask = dstAccess;
         vkCmdPipelineBarrier(cmd, src, dst, 0, 1, &memory, 0, nullptr, 0, nullptr);
+    }
+
+    void transition(VkImage image, VkImageLayout from, VkImageLayout to, VkAccessFlags srcAccess,
+                    VkAccessFlags dstAccess, VkPipelineStageFlags src, VkPipelineStageFlags dst)
+    {
+        VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        b.srcAccessMask = srcAccess;
+        b.dstAccessMask = dstAccess;
+        b.oldLayout = from;
+        b.newLayout = to;
+        b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b.image = image;
+        b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdPipelineBarrier(cmd, src, dst, 0, 0, nullptr, 0, nullptr, 1, &b);
     }
 
     bool ensureFrame(int w, int h)
@@ -325,20 +527,20 @@ struct PyroWaveDecoder::Gpu
         for (int i = 0; i < 3; ++i)
         {
             const VkDeviceSize bytes = (VkDeviceSize(PlaneWidth(i, w)) * PlaneHeight(i, h) + 3) & ~VkDeviceSize(3);
-            if (!makeImage(planes[i], PlaneWidth(i, w), PlaneHeight(i, h)) ||
+            if (!makeImage(planes[i], VK_FORMAT_R8_UNORM, PlaneWidth(i, w), PlaneHeight(i, h),
+                           VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT) ||
                 !makeBuffer(packed[i], bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT))
             {
                 return false;
             }
         }
-        const VkDeviceSize rgbxBytes = VkDeviceSize(w) * h * 4;
-        if (!makeBuffer(params, 16, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, host))
-        {
-            return false;
-        }
-        if (!makeBuffer(rgbx, rgbxBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, host | VK_MEMORY_PROPERTY_HOST_CACHED_BIT) &&
-            !makeBuffer(rgbx, rgbxBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, host))
+        if (!makeBuffer(params, 16, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, host) ||
+            !makeBuffer(rgbx, VkDeviceSize(w) * h * 4,
+                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) ||
+            !makeImage(frame, VK_FORMAT_R8G8B8A8_UNORM, uint32_t(w), uint32_t(h),
+                       VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT))
         {
             return false;
         }
@@ -369,21 +571,156 @@ struct PyroWaveDecoder::Gpu
         }
         for (Image& image : planes)
         {
-            VkImageMemoryBarrier toGeneral{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-            toGeneral.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-            toGeneral.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            toGeneral.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-            toGeneral.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            toGeneral.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            toGeneral.image = image.image;
-            toGeneral.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
-                                 nullptr, 0, nullptr, 1, &toGeneral);
+            transition(image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, 0, VK_ACCESS_SHADER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
         }
         return submitAndWait();
     }
 
-    bool decode(const QByteArray& data, QImage& out)
+    bool ensureSwapchain()
+    {
+        if (view == nullptr || !view->isExposed())
+        {
+            return false;
+        }
+        if (surface == VK_NULL_HANDLE)
+        {
+            surface = QVulkanInstance::surfaceForWindow(view);
+            VkBool32 supported = VK_FALSE;
+            if (surface == VK_NULL_HANDLE ||
+                vkGetPhysicalDeviceSurfaceSupportKHR(physical, family, surface, &supported) != VK_SUCCESS || !supported)
+            {
+                surface = VK_NULL_HANDLE;
+                return false;
+            }
+        }
+        VkSurfaceCapabilitiesKHR caps = {};
+        if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical, surface, &caps) != VK_SUCCESS)
+        {
+            return false;
+        }
+        VkExtent2D extent = caps.currentExtent;
+        if (extent.width == UINT32_MAX)
+        {
+            const QSize pixels = view->size() * view->devicePixelRatio();
+            extent = {uint32_t(pixels.width()), uint32_t(pixels.height())};
+        }
+        if (extent.width == 0 || extent.height == 0)
+        {
+            return false;
+        }
+        if (swapchain != VK_NULL_HANDLE && extent.width == swapExtent.width && extent.height == swapExtent.height)
+        {
+            return true;
+        }
+        if ((caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) == 0)
+        {
+            return false;
+        }
+
+        uint32_t count = 0;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physical, surface, &count, nullptr);
+        std::vector<VkSurfaceFormatKHR> formats(count);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physical, surface, &count, formats.data());
+        if (formats.empty())
+        {
+            return false;
+        }
+        VkSurfaceFormatKHR format = formats[0];
+        for (const VkSurfaceFormatKHR& candidate : formats)
+        {
+            if (candidate.format == VK_FORMAT_B8G8R8A8_UNORM || candidate.format == VK_FORMAT_R8G8B8A8_UNORM)
+            {
+                format = candidate;
+                break;
+            }
+        }
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physical, surface, &count, nullptr);
+        std::vector<VkPresentModeKHR> modes(count);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physical, surface, &count, modes.data());
+        VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR;
+        for (VkPresentModeKHR preferred : {VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR})
+        {
+            if (std::find(modes.begin(), modes.end(), preferred) != modes.end())
+            {
+                mode = preferred;
+                break;
+            }
+        }
+
+        VkSwapchainKHR old = swapchain;
+        VkSwapchainCreateInfoKHR info{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
+        info.surface = surface;
+        info.minImageCount = std::max(caps.minImageCount + 1, 2u);
+        if (caps.maxImageCount != 0)
+        {
+            info.minImageCount = std::min(info.minImageCount, caps.maxImageCount);
+        }
+        info.imageFormat = format.format;
+        info.imageColorSpace = format.colorSpace;
+        info.imageExtent = extent;
+        info.imageArrayLayers = 1;
+        info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        info.preTransform = caps.currentTransform;
+        info.compositeAlpha = (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0
+                                  ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
+                                  : VkCompositeAlphaFlagBitsKHR(caps.supportedCompositeAlpha & -caps.supportedCompositeAlpha);
+        info.presentMode = mode;
+        info.clipped = VK_TRUE;
+        info.oldSwapchain = old;
+        VkSwapchainKHR created = VK_NULL_HANDLE;
+        const VkResult result = vkCreateSwapchainKHR(device, &info, nullptr, &created);
+        releaseSwapchain();
+        if (result != VK_SUCCESS)
+        {
+            return false;
+        }
+        swapchain = created;
+        swapExtent = extent;
+        vkGetSwapchainImagesKHR(device, swapchain, &count, nullptr);
+        swapImages.resize(count);
+        vkGetSwapchainImagesKHR(device, swapchain, &count, swapImages.data());
+        VkSemaphoreCreateInfo semaphoreInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        rendered.resize(count);
+        for (VkSemaphore& semaphore : rendered)
+        {
+            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &semaphore);
+        }
+        return true;
+    }
+
+    // Clears the swapchain image and blits the left eye into it, letterboxed.
+    void recordPresent(VkImage target)
+    {
+        transition(target, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
+                   VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+        const VkClearColorValue background = {{4.0f / 255.0f, 6.0f / 255.0f, 9.0f / 255.0f, 1.0f}};
+        const VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdClearColorImage(cmd, target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &background, 1, &range);
+        barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_ACCESS_TRANSFER_WRITE_BIT);
+
+        const double eyeWidth = width / 2;
+        const double scale = std::min(swapExtent.width / eyeWidth, swapExtent.height / double(height));
+        const int32_t w = std::max(1, int32_t(eyeWidth * scale));
+        const int32_t h = std::max(1, int32_t(height * scale));
+        const int32_t x = (int32_t(swapExtent.width) - w) / 2;
+        const int32_t y = (int32_t(swapExtent.height) - h) / 2;
+        VkImageBlit blit = {};
+        blit.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        blit.srcOffsets[1] = {width / 2, height, 1};
+        blit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        blit.dstOffsets[0] = {x, y, 0};
+        blit.dstOffsets[1] = {x + w, y + h, 1};
+        vkCmdBlitImage(cmd, frame.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, target,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+        transition(target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                   VK_ACCESS_TRANSFER_WRITE_BIT, 0, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                   VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+    }
+
+    bool decode(const QByteArray& data)
     {
         pyrowave_decoder_clear(decoder);
         if (pyrowave_decoder_push_packet(decoder, data.constData(), size_t(data.size())) != PYROWAVE_SUCCESS ||
@@ -427,19 +764,88 @@ struct PyroWaveDecoder::Gpu
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &set, 0, nullptr);
         vkCmdDispatch(cmd, (uint32_t(width) * uint32_t(height) + 63) / 64, 1, 1);
-        barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_HOST_BIT,
-                VK_ACCESS_HOST_READ_BIT);
-        if (!submitAndWait())
+        barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_ACCESS_TRANSFER_READ_BIT);
+
+        transition(frame.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                   VK_PIPELINE_STAGE_TRANSFER_BIT);
+        VkBufferImageCopy toFrame = {};
+        toFrame.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        toFrame.imageExtent = {uint32_t(width), uint32_t(height), 1};
+        vkCmdCopyBufferToImage(cmd, rgbx.buffer, frame.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &toFrame);
+        transition(frame.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                   VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+        uint32_t index = UINT32_MAX;
+        if (ensureSwapchain())
+        {
+            const VkResult got = vkAcquireNextImageKHR(device, swapchain, 100'000'000ull, acquired, VK_NULL_HANDLE, &index);
+            if (got == VK_ERROR_OUT_OF_DATE_KHR)
+            {
+                swapExtent = {};
+            }
+            if (got != VK_SUCCESS && got != VK_SUBOPTIMAL_KHR)
+            {
+                index = UINT32_MAX;
+            }
+        }
+        if (index != UINT32_MAX)
+        {
+            recordPresent(swapImages[index]);
+        }
+        const bool presenting = index != UINT32_MAX;
+        if (!submitAndWait(presenting ? acquired : VK_NULL_HANDLE, presenting ? rendered[index] : VK_NULL_HANDLE))
         {
             return false;
         }
-
-        VkMappedMemoryRange range{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
-        range.memory = rgbx.memory;
-        range.size = VK_WHOLE_SIZE;
-        vkInvalidateMappedMemoryRanges(device, 1, &range);
-        out = QImage(static_cast<const uchar*>(rgbx.mapped), width, height, width * 4, QImage::Format_RGBX8888).copy();
+        hasFrame = true;
+        if (presenting)
+        {
+            VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+            present.waitSemaphoreCount = 1;
+            present.pWaitSemaphores = &rendered[index];
+            present.swapchainCount = 1;
+            present.pSwapchains = &swapchain;
+            present.pImageIndices = &index;
+            const VkResult shown = vkQueuePresentKHR(queue, &present);
+            if (shown == VK_ERROR_OUT_OF_DATE_KHR || shown == VK_SUBOPTIMAL_KHR)
+            {
+                swapExtent = {};
+            }
+        }
         return true;
+    }
+
+    QImage snapshot()
+    {
+        if (!hasFrame)
+        {
+            return {};
+        }
+        Buffer staging;
+        const VkDeviceSize bytes = VkDeviceSize(width) * height * 4;
+        if (!makeBuffer(staging, bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) ||
+            !beginCommands())
+        {
+            releaseBuffer(staging);
+            return {};
+        }
+        const VkBufferCopy region = {0, 0, bytes};
+        vkCmdCopyBuffer(cmd, rgbx.buffer, staging.buffer, 1, &region);
+        barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                VK_ACCESS_HOST_READ_BIT);
+        QImage image;
+        if (submitAndWait())
+        {
+            image = QImage(static_cast<const uchar*>(staging.mapped), width, height, width * 4,
+                           QImage::Format_RGBX8888)
+                        .copy();
+        }
+        releaseBuffer(staging);
+        return image;
     }
 };
 
@@ -458,7 +864,7 @@ bool PyroWaveDecoder::initialize(QString* error)
     {
         return true;
     }
-    auto gpu = std::make_unique<Gpu>();
+    std::unique_ptr<Gpu> gpu = std::make_unique<Gpu>();
     if (!gpu->initialize())
     {
         if (error != nullptr)
@@ -471,12 +877,33 @@ bool PyroWaveDecoder::initialize(QString* error)
     return true;
 }
 
+QWindow* PyroWaveDecoder::createView(QWidget* inputTarget)
+{
+    if (!gpu_)
+    {
+        return nullptr;
+    }
+    QWindow* view = new PyroWaveView(&gpu_->instance, inputTarget);
+    gpu_->view = view;
+    return view;
+}
+
 void PyroWaveDecoder::reset()
 {
     if (gpu_)
     {
         gpu_->releaseFrame();
     }
+}
+
+QSize PyroWaveDecoder::decodedSize() const
+{
+    return gpu_ ? QSize(gpu_->width, gpu_->height) : QSize();
+}
+
+QImage PyroWaveDecoder::snapshot()
+{
+    return gpu_ ? gpu_->snapshot() : QImage();
 }
 
 bool PyroWaveDecoder::frameSize(const QByteArray& data, int& width, int& height)
@@ -496,20 +923,10 @@ bool PyroWaveDecoder::frameSize(const QByteArray& data, int& width, int& height)
     return true;
 }
 
-bool PyroWaveDecoder::decode(const QByteArray& data, int64_t /*presentationTimeNs*/, QList<QImage>& frames)
+bool PyroWaveDecoder::decode(const QByteArray& data, int64_t /*presentationTimeNs*/)
 {
     int width = 0;
     int height = 0;
-    if (!gpu_ || !frameSize(data, width, height) || (width % 2) != 0 || (height % 2) != 0 ||
-        !gpu_->ensureFrame(width, height))
-    {
-        return false;
-    }
-    QImage image;
-    if (!gpu_->decode(data, image))
-    {
-        return false;
-    }
-    frames.append(image);
-    return true;
+    return gpu_ && frameSize(data, width, height) && (width % 2) == 0 && (height % 2) == 0 &&
+           gpu_->ensureFrame(width, height) && gpu_->decode(data);
 }

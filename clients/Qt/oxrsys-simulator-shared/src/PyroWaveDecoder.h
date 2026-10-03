@@ -1,18 +1,21 @@
 // SPDX-License-Identifier: MPL-2.0
 //
-// PyroWave decode for the Qt simulator, on the GPU: PyroWave decodes into three plane images on a
-// Vulkan device it creates itself, and the Lean-authored yuv420_to_rgbx kernel (kernels/simulator)
-// turns them into RGBX in a host-visible buffer that becomes the QImage.
+// PyroWave decode for the Qt simulator, on the GPU: PyroWave decodes into three plane images, the
+// Lean-authored yuv420_to_rgbx kernel (kernels/simulator) packs them, and the left eye is blitted
+// into a swapchain on the view window, so no frame comes back to the CPU.
 
 #pragma once
 
 #include <QByteArray>
 #include <QImage>
-#include <QList>
+#include <QSize>
 #include <QString>
 
 #include <cstdint>
 #include <memory>
+
+class QWidget;
+class QWindow;
 
 class PyroWaveDecoder final
 {
@@ -26,8 +29,16 @@ public:
     bool initialize(QString* error);
     bool isInitialized() const;
 
-    // Decode one stream frame; the image is appended to frames.
-    bool decode(const QByteArray& data, int64_t presentationTimeNs, QList<QImage>& frames);
+    // The window frames are presented into; its input events go to inputTarget.
+    QWindow* createView(QWidget* inputTarget);
+
+    // Decode one stream frame and present it.
+    bool decode(const QByteArray& data, int64_t presentationTimeNs);
+
+    QSize decodedSize() const;
+
+    // The last decoded frame, read back from the GPU.
+    QImage snapshot();
 
     void reset();
 

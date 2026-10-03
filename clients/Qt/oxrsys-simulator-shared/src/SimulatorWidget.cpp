@@ -23,6 +23,7 @@
 #include <QUdpSocket>
 #include <QVBoxLayout>
 #include <QWheelEvent>
+#include <QWindow>
 
 
 #include <algorithm>
@@ -139,10 +140,22 @@ public:
         update();
     }
 
-    void setVideoFrame(const QImage& frame)
+    void setVideoView(QWidget* view)
     {
-        videoFrame_ = frame;
-        update();
+        QVBoxLayout* layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->addWidget(view);
+        videoView_ = view;
+        videoView_->setFocusPolicy(Qt::NoFocus);
+        videoView_->hide();
+    }
+
+    void setVideoActive(bool active)
+    {
+        if (videoView_ != nullptr && videoView_->isVisible() != active)
+        {
+            videoView_->setVisible(active);
+        }
     }
 
     void setStatusOverlay(const QString& videoStatus,
@@ -168,18 +181,6 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing, true);
 
         const QRectF bounds = rect();
-        if (!videoFrame_.isNull())
-        {
-            painter.fillRect(bounds, QColor(4, 6, 9));
-            const QSizeF scaledSize = videoFrame_.size().scaled(bounds.size().toSize(), Qt::KeepAspectRatio);
-            const QRectF target(bounds.center().x() - scaledSize.width() * 0.5,
-                                bounds.center().y() - scaledSize.height() * 0.5,
-                                scaledSize.width(),
-                                scaledSize.height());
-            painter.drawImage(target, videoFrame_);
-            painter.fillRect(bounds, QColor(0, 0, 0, 45));
-        }
-        else
         {
             const QColor sky(18, 24, 31);
             const QColor floor(13, 17, 22);
@@ -282,7 +283,7 @@ private:
     float pitch_ = 0.0f;
     float roll_ = 0.0f;
     float position_[3] = {0.0f, 1.6f, 0.0f};
-    QImage videoFrame_;
+    QWidget* videoView_ = nullptr;
     QString videoStatus_ = "Waiting for video";
     quint64 videoPackets_ = 0;
     quint64 videoFrames_ = 0;
@@ -856,7 +857,6 @@ bool SimulatorWidget::startVideoReceiver()
     lastKeyframeRequestTimeNs_ = 0;
     updatePreviewStatus();
 
-    videoSocket_->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 8 * 1024 * 1024);
     const bool bound = videoSocket_->bind(QHostAddress::AnyIPv4,
                                           oxr::protocol::VIDEO_PORT,
                                           QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
@@ -868,6 +868,8 @@ bool SimulatorWidget::startVideoReceiver()
                      .arg(videoSocket_->errorString()));
         return false;
     }
+    // Only a bound socket takes the option, and one frame is about 80 datagrams.
+    videoSocket_->setSocketOption(QAbstractSocket::ReceiveBufferSizeSocketOption, 8 * 1024 * 1024);
     return ensureVideoDecoder();
 #endif
 }
@@ -880,7 +882,7 @@ void SimulatorWidget::stopVideoReceiver()
     }
     if (previewWidget_ != nullptr)
     {
-        previewWidget_->setVideoFrame(QImage());
+        previewWidget_->setVideoActive(false);
     }
     videoAssembler_.reset();
     videoPacketsReceived_ = 0;
@@ -1016,6 +1018,11 @@ bool SimulatorWidget::ensureVideoDecoder()
         setState(State::Discovered, error);
         return false;
     }
+    if (!videoViewCreated_ && previewWidget_ != nullptr)
+    {
+        previewWidget_->setVideoView(QWidget::createWindowContainer(pyrowave_.createView(previewWidget_), previewWidget_));
+        videoViewCreated_ = true;
+    }
     return true;
 }
 
@@ -1030,24 +1037,23 @@ bool SimulatorWidget::decodeVideoFrame(const AssembledVideoFrame& frame)
     {
         return false;
     }
-    QList<QImage> images;
-    if (!pyrowave_.decode(frame.nalUnit, frame.presentationTimeNs, images))
+    if (!pyrowave_.decode(frame.nalUnit, frame.presentationTimeNs))
     {
         return false;
     }
     if (previewWidget_ != nullptr)
     {
-        previewWidget_->setVideoFrame(images.last());
+        previewWidget_->setVideoActive(true);
     }
     const quint64 before = videoFramesDecoded_;
-    videoFramesDecoded_ += static_cast<quint64>(images.size());
+    ++videoFramesDecoded_;
     if (before == 0)
     {
-        qInfo("PyroWave: first frame decoded, %dx%d", images.last().width(), images.last().height());
+        qInfo("PyroWave: first frame decoded, %dx%d", pyrowave_.decodedSize().width(), pyrowave_.decodedSize().height());
     }
-    if (!snapshotPath_.isEmpty() && before < 90 && videoFramesDecoded_ >= 90)
+    if (!snapshotPath_.isEmpty() && videoFramesDecoded_ == 90)
     {
-        qInfo("PyroWave: snapshot %s", images.last().save(snapshotPath_) ? "saved" : "failed");
+        qInfo("PyroWave: snapshot %s", pyrowave_.snapshot().save(snapshotPath_) ? "saved" : "failed");
     }
     return true;
 }
