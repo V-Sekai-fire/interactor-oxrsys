@@ -694,7 +694,7 @@ public:
             gInput->UpdateScalarComponent(triggerValue_, trigger, 0.0);
             gInput->UpdateBooleanComponent(gripClick_, grip > 0.5f, 0.0);
             gInput->UpdateScalarComponent(gripValue_, grip, 0.0);
-            gInput->UpdateBooleanComponent(systemClick_, false, 0.0);
+            gInput->UpdateBooleanComponent(systemClick_, left_ && (packet.buttonState & oxr::protocol::BUTTON_MENU) != 0, 0.0);
             const HmdMatrix34_t tip = GazeFromHand(packet, position, rotation);
             gInput->UpdatePoseComponent(tip_, &tip, 0.0);
         }

@@ -929,9 +929,12 @@ bool SimulatorWidget::eventFilter(QObject* watched, QEvent* event)
                 event->accept();
                 return true;
             }
+            // With controllers the middle button is the controller's system button, which toggles the
+            // dashboard; without them it is the headset button, which opens it and selects by gaze.
             if (mouseEvent->button() == Qt::MiddleButton)
             {
-                setKeyPressed(oxrsys::qt_simulator::HeadsetButtonKey, true);
+                middleKey_ = controllersPresent_ ? int(Qt::Key_M) : oxrsys::qt_simulator::HeadsetButtonKey;
+                setKeyPressed(middleKey_, true);
                 event->accept();
                 return true;
             }
@@ -956,7 +959,7 @@ bool SimulatorWidget::eventFilter(QObject* watched, QEvent* event)
             hasLastMousePosition_ = true;
             if (mouseEvent->button() == Qt::MiddleButton)
             {
-                setKeyPressed(oxrsys::qt_simulator::HeadsetButtonKey, false);
+                setKeyPressed(middleKey_, false);
             }
             if (mouseEvent->button() == Qt::LeftButton)
             {
