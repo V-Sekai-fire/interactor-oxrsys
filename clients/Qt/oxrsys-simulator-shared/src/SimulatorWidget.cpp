@@ -30,9 +30,12 @@
 
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <deque>
+#include <vector>
 #include <iterator>
 
 namespace
@@ -111,7 +114,98 @@ float radiansToDegrees(float radians)
     return radians * 57.2957795131f;
 }
 
+// Per-tick increments of a running total, the last 10 s at the 250 ms stats rate.
+struct Sparkline
+{
+    std::deque<quint64> deltas;
+    quint64 last = 0;
+    bool primed = false;
+
+    void sample(quint64 total)
+    {
+        deltas.push_back(primed && total >= last ? total - last : 0);
+        last = total;
+        primed = true;
+        if (deltas.size() > 40)
+        {
+            deltas.pop_front();
+        }
+    }
+
+    // Each segment is coloured by its own sample, so a fault shows while it lasts and clears with it.
+    // The scale is the 90th percentile; a spike above it clips to the top instead of flattening the rest.
+    void draw(QPainter& painter, const QRectF& area, bool faultSeries) const
+    {
+        painter.setPen(QPen(QColor(65, 78, 94), 1.0));
+        painter.drawLine(area.bottomLeft(), area.bottomRight());
+        if (deltas.size() < 2)
+        {
+            return;
+        }
+        std::vector<quint64> sorted(deltas.begin(), deltas.end());
+        std::sort(sorted.begin(), sorted.end());
+        const quint64 scale = std::max<quint64>(1, sorted[(sorted.size() - 1) * 9 / 10]);
+        const qreal step = area.width() / 39.0;
+        const qreal x0 = area.right() - step * static_cast<qreal>(deltas.size() - 1);
+        const auto point = [&](size_t i) {
+            const qreal level = std::min<qreal>(1.0, static_cast<qreal>(deltas[i]) / static_cast<qreal>(scale));
+            return QPointF(x0 + step * static_cast<qreal>(i), area.bottom() - area.height() * level);
+        };
+        for (size_t i = 1; i < deltas.size(); ++i)
+        {
+            const bool fault = faultSeries && deltas[i] > 0;
+            const bool clipped = deltas[i] > scale;
+            const QColor colour = fault ? QColor(240, 98, 98) : clipped ? QColor(242, 204, 96) : QColor(126, 231, 135);
+            painter.setPen(QPen(colour, 1.25));
+            painter.drawLine(point(i - 1), point(i));
+        }
+    }
+};
+
 } // namespace
+
+// The Tracking panel's counters as labelled sparklines, one row each, sampled at the stats rate.
+class SparklineStrip final : public QWidget
+{
+public:
+    SparklineStrip(QStringList labels, QWidget* parent)
+        : QWidget(parent)
+        , labels_(std::move(labels))
+        , sparks_(static_cast<size_t>(labels_.size()))
+    {
+        setMinimumHeight(18 * labels_.size());
+    }
+
+    void sample(const std::vector<quint64>& totals)
+    {
+        for (size_t i = 0; i < sparks_.size() && i < totals.size(); ++i)
+        {
+            sparks_[i].sample(totals[i]);
+        }
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        const qreal row = static_cast<qreal>(height()) / static_cast<qreal>(sparks_.size());
+        for (size_t i = 0; i < sparks_.size(); ++i)
+        {
+            const QRectF line(0.0, row * static_cast<qreal>(i) + 2.0, width(), row - 4.0);
+            painter.setPen(QColor(154, 160, 166));
+            painter.drawText(line, Qt::AlignLeft | Qt::AlignVCenter, labels_[static_cast<int>(i)]);
+            const QString& label = labels_[static_cast<int>(i)];
+            sparks_[i].draw(painter, line.adjusted(96.0, 0.0, 0.0, 0.0),
+                            label.contains("drop") || label.contains("fec") || label.contains("error"));
+        }
+    }
+
+private:
+    QStringList labels_;
+    std::vector<Sparkline> sparks_;
+};
 
 class SimulatorPreviewWidget final : public QWidget
 {
@@ -183,11 +277,11 @@ public:
                           quint64 decodeErrors)
     {
         videoStatus_ = videoStatus;
-        videoPackets_ = videoPackets;
-        videoFrames_ = videoFrames;
-        videoDrops_ = videoDrops;
-        fecRecoveries_ = fecRecoveries;
-        decodeErrors_ = decodeErrors;
+        const quint64 totals[] = {videoPackets, videoFrames, videoDrops, fecRecoveries, decodeErrors};
+        for (size_t i = 0; i < sparks_.size(); ++i)
+        {
+            sparks_[i].sample(totals[i]);
+        }
         update();
         publishOverlay();
     }
@@ -334,14 +428,18 @@ private:
         painter.setPen(QColor(242, 244, 248));
         painter.drawText(badge.adjusted(12, 6, -12, -22),
                          videoStatus_.isEmpty() ? "Waiting for video" : videoStatus_);
-        painter.setPen(QColor(154, 160, 166));
-        painter.drawText(badge.adjusted(12, 22, -12, -6),
-                         QString("%1 packets  %2 frames  %3 drops  %4 fec  %5 errors")
-                             .arg(videoPackets_)
-                             .arg(videoFrames_)
-                             .arg(videoDrops_)
-                             .arg(fecRecoveries_)
-                             .arg(decodeErrors_));
+        static const char* const labels[] = {"pkt", "fps", "drop", "fec", "err"};
+        QFont small = painter.font();
+        small.setPointSizeF(small.pointSizeF() * 0.8);
+        painter.setFont(small);
+        const qreal cell = (badge.width() - 24.0) / static_cast<qreal>(sparks_.size());
+        for (size_t i = 0; i < sparks_.size(); ++i)
+        {
+            const QRectF area(badge.left() + 12.0 + cell * static_cast<qreal>(i), badge.top() + 23.0, cell - 6.0, 13.0);
+            painter.setPen(QColor(154, 160, 166));
+            painter.drawText(area, Qt::AlignLeft | Qt::AlignVCenter, labels[i]);
+            sparks_[i].draw(painter, area.adjusted(26.0, 0.0, 0.0, 0.0), i >= 2);
+        }
     }
 
     // Badges render to opaque images over the backdrop colour; the decoder blits them over the video.
@@ -415,11 +513,7 @@ private:
     PyroWaveDecoder* decoder_ = nullptr;
     bool overlayDirty_ = false;
     QString videoStatus_ = "Waiting for video";
-    quint64 videoPackets_ = 0;
-    quint64 videoFrames_ = 0;
-    quint64 videoDrops_ = 0;
-    quint64 fecRecoveries_ = 0;
-    quint64 decodeErrors_ = 0;
+    std::array<Sparkline, 5> sparks_;
     bool mouseCaptured_ = false;
     bool streaming_ = false;
 };
@@ -735,6 +829,8 @@ void SimulatorWidget::buildUi()
     auto* telemetryPanel = makePanel(this);
     auto* telemetryLayout = new QVBoxLayout(telemetryPanel);
     telemetryLayout->addWidget(makeSecondaryLabel("Tracking", telemetryPanel));
+    telemetrySparks_ = new SparklineStrip({"tracking", "video packets", "frames", "drops", "fec", "decode errors"}, telemetryPanel);
+    telemetryLayout->addWidget(telemetrySparks_);
     telemetryLabel_ = new QLabel(telemetryPanel);
     telemetryLabel_->setWordWrap(true);
     telemetryLayout->addWidget(telemetryLabel_);
@@ -954,11 +1050,10 @@ void SimulatorWidget::updateTelemetrySummary()
 
 void SimulatorWidget::refreshStats()
 {
-    if (previewStatusDirty_)
-    {
-        previewStatusDirty_ = false;
-        pushPreviewStatus();
-    }
+    previewStatusDirty_ = false;
+    pushPreviewStatus();
+    telemetrySparks_->sample({trackingPacketsSent_, videoPacketsReceived_, videoFramesDecoded_, videoFramesDropped_,
+                              videoFecRecoveries_, decodeErrors_});
     if (telemetryDirty_)
     {
         telemetryDirty_ = false;
@@ -1360,13 +1455,7 @@ void SimulatorWidget::pushTelemetrySummary()
         return;
     }
 
-    telemetryLabel_->setText(QString("%1 tracking packets sent\n%2 video packets, %3 frames, %4 drops, %5 fec, %6 decode errors\nHead pose: %7, %8, %9\nYaw/pitch: %10 / %11 deg\nIPD: 0.064 m  FOV: %12 deg")
-                                 .arg(trackingPacketsSent_)
-                                 .arg(videoPacketsReceived_)
-                                 .arg(videoFramesDecoded_)
-                                 .arg(videoFramesDropped_)
-                                 .arg(videoFecRecoveries_)
-                                 .arg(decodeErrors_)
+    telemetryLabel_->setText(QString("Head pose: %1, %2, %3\nYaw/pitch: %4 / %5 deg\nIPD: 0.064 m  FOV: %6 deg")
                                  .arg(trackingPose_.headPosition[0], 0, 'f', 2)
                                  .arg(trackingPose_.headPosition[1], 0, 'f', 2)
                                  .arg(trackingPose_.headPosition[2], 0, 'f', 2)

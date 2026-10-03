@@ -26,6 +26,7 @@ class QSlider;
 class QTimer;
 class QUdpSocket;
 class SimulatorPreviewWidget;
+class SparklineStrip;
 
 class SimulatorWidget final : public QWidget
 {
@@ -113,6 +114,7 @@ private:
     QLabel* statusLabel_ = nullptr;
     QLabel* serverLabel_ = nullptr;
     QLabel* telemetryLabel_ = nullptr;
+    SparklineStrip* telemetrySparks_ = nullptr;
     QLabel* simulatorFovValueLabel_ = nullptr;
     QLabel* hintLabel_ = nullptr;
     SimulatorPreviewWidget* previewWidget_ = nullptr;
