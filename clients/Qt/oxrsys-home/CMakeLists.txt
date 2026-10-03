@@ -38,9 +38,15 @@ set(OXRSYS_HOME_CORE_SOURCES
 
 add_executable(oxrsys-home
     ${OXRSYS_HOME_CORE_SOURCES}
+    src/HomeTray.cpp
     src/MainWindow.cpp
     src/main.cpp
 )
+
+# The tray uses the PC VR driver's ready-state headset glyph, drawn from driver/resources/icons/headset.svg.
+set(OXRSYS_TRAY_ICON "${CMAKE_CURRENT_LIST_DIR}/../../../driver/resources/icons/headset_status_ready_2x.png")
+set_source_files_properties("${OXRSYS_TRAY_ICON}" PROPERTIES QT_RESOURCE_ALIAS "headset.png")
+qt_add_resources(oxrsys-home "tray" PREFIX "/tray" FILES "${OXRSYS_TRAY_ICON}")
 
 target_include_directories(oxrsys-home PRIVATE
     src

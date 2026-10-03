@@ -2,6 +2,8 @@
 
 #include "MainWindow.h"
 
+#include "HomeTray.h"
+
 #include "PlatformSupport.h"
 #include "SimulatorWidget.h"
 
@@ -34,6 +36,9 @@
 #include <QSlider>
 #include <QStyle>
 #include <QTabWidget>
+#include <QCloseEvent>
+#include <QFileInfo>
+#include <QSystemTrayIcon>
 #include <QTimer>
 #include <QToolButton>
 #include <QUrl>
@@ -509,6 +514,30 @@ MainWindow::MainWindow(QWidget* parent)
 
     refreshUi();
     QTimer::singleShot(0, this, &MainWindow::showRuntimeSetupGuidanceIfNeeded);
+
+    if (QSystemTrayIcon::isSystemTrayAvailable())
+    {
+        const QString statusPath = model_->paths().runtimeStatusPath;
+        tray_ = new HomeTray(statusPath, QFileInfo(statusPath).absolutePath(), [this]() { openSimulatorWindow(); },
+                             [this]() {
+                                 showNormal();
+                                 raise();
+                                 activateWindow();
+                             },
+                             this);
+    }
+}
+
+// With the tray up, closing the window keeps Home running there; Quit in the tray exits.
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    if (tray_ != nullptr && tray_->isVisible())
+    {
+        hide();
+        event->ignore();
+        return;
+    }
+    QMainWindow::closeEvent(event);
 }
 
 void MainWindow::showRuntimeSetupGuidanceIfNeeded()

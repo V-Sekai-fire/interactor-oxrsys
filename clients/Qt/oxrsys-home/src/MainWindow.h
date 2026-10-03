@@ -22,6 +22,7 @@ class QTabWidget;
 class QVBoxLayout;
 
 class RuntimeStatsChart;
+class HomeTray;
 class SimulatorWidget;
 
 class MainWindow final : public QMainWindow
@@ -30,6 +31,9 @@ class MainWindow final : public QMainWindow
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);
+
+protected:
+    void closeEvent(QCloseEvent* event) override;
 
 private:
     void buildUi();
@@ -58,6 +62,7 @@ private:
     void showRuntimeSetupGuidanceIfNeeded();
 
     HomeModel* model_ = nullptr;
+    HomeTray* tray_ = nullptr;
     QTabWidget* tabs_ = nullptr;
     QWidget* developerTab_ = nullptr;
 
