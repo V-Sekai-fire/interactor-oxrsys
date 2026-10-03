@@ -26,8 +26,9 @@ struct SimulatorTrackingPose
     float pitch = 0.0f;
     float roll = 0.0f;
     float headPosition[3] = {0.0f, 1.6f, 0.0f};
-    float leftControllerPosition[3] = {-0.2f, 1.3f, -0.4f};
-    float rightControllerPosition[3] = {0.2f, 1.3f, -0.4f};
+    // Hands sit relative to the head in its yaw frame, so they follow walking and turning.
+    float leftHandOffset[3] = {-0.18f, -0.35f, -0.35f};
+    float rightHandOffset[3] = {0.18f, -0.35f, -0.35f};
 };
 
 void advanceSimulatorTracking(SimulatorTrackingPose& pose,
@@ -40,7 +41,8 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
                                  int64_t timestampNs,
                                  float verticalFovDegrees,
                                  float eyeAspect,
-                                 oxr::protocol::TrackingPacket& packet);
+                                 oxr::protocol::TrackingPacket& packet,
+                                 bool controllersPresent = true);
 
 int simulatorKeyIdentifier(const QKeyEvent& event);
 

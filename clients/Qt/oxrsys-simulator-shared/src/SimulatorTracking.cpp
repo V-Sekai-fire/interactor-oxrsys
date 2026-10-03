@@ -39,6 +39,19 @@ Quaternion axisAngle(float x, float y, float z, float angle)
     return {x * sine, y * sine, z * sine, std::cos(halfAngle)};
 }
 
+struct Vector
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+};
+
+Vector rotate(const Quaternion& q, const Vector& v)
+{
+    const Quaternion p = multiply(multiply(q, {v.x, v.y, v.z, 0.0f}), {-q.x, -q.y, -q.z, q.w});
+    return {p.x, p.y, p.z};
+}
+
 Quaternion headQuaternion(float yaw, float pitch, float roll)
 {
     return multiply(multiply(axisAngle(0.0f, 1.0f, 0.0f, yaw),
@@ -117,22 +130,18 @@ void advanceSimulatorTracking(SimulatorTrackingPose& pose,
         return;
     }
 
-    moveX = moveX / moveLength * MoveSpeed * deltaTime;
-    moveZ = moveZ / moveLength * MoveSpeed * deltaTime;
-
+    const float step = MoveSpeed * deltaTime / moveLength;
     const bool leftShift = pressedKeys.contains(LeftShiftKey);
     const bool rightShift = pressedKeys.contains(RightShiftKey);
-    float* target = pose.headPosition;
-    if (leftShift && !rightShift)
+    float* hand = leftShift && !rightShift ? pose.leftHandOffset : rightShift && !leftShift ? pose.rightHandOffset : nullptr;
+    if (hand != nullptr)
     {
-        target = pose.leftControllerPosition;
+        hand[0] += strafeAmount * step;
+        hand[2] -= forwardAmount * step;
+        return;
     }
-    else if (rightShift && !leftShift)
-    {
-        target = pose.rightControllerPosition;
-    }
-    target[0] += moveX;
-    target[2] += moveZ;
+    pose.headPosition[0] += moveX * step;
+    pose.headPosition[2] += moveZ * step;
 }
 
 void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
@@ -140,13 +149,14 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
                                  int64_t timestampNs,
                                  float verticalFovDegrees,
                                  float eyeAspect,
-                                 oxr::protocol::TrackingPacket& packet)
+                                 oxr::protocol::TrackingPacket& packet,
+                                 bool controllersPresent)
 {
     packet = {};
     packet.timestampNs = timestampNs;
-    packet.trackingFlags =
-        oxr::protocol::TRACKING_FLAG_LEFT_CONTROLLER_ACTIVE |
-        oxr::protocol::TRACKING_FLAG_RIGHT_CONTROLLER_ACTIVE;
+    packet.trackingFlags = controllersPresent ? (oxr::protocol::TRACKING_FLAG_LEFT_CONTROLLER_ACTIVE |
+                                                 oxr::protocol::TRACKING_FLAG_RIGHT_CONTROLLER_ACTIVE)
+                                              : 0u;
     std::copy(std::begin(pose.headPosition),
               std::end(pose.headPosition),
               std::begin(packet.headPosition));
@@ -157,20 +167,26 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
     packet.headOrientation[2] = orientation.z;
     packet.headOrientation[3] = orientation.w;
 
-    std::copy(std::begin(pose.leftControllerPosition),
-              std::end(pose.leftControllerPosition),
-              std::begin(packet.leftControllerPos));
-    std::copy(std::begin(pose.rightControllerPosition),
-              std::end(pose.rightControllerPosition),
-              std::begin(packet.rightControllerPos));
-    packet.leftControllerRot[0] = orientation.x;
-    packet.leftControllerRot[1] = orientation.y;
-    packet.leftControllerRot[2] = orientation.z;
-    packet.leftControllerRot[3] = orientation.w;
-    packet.rightControllerRot[0] = orientation.x;
-    packet.rightControllerRot[1] = orientation.y;
-    packet.rightControllerRot[2] = orientation.z;
-    packet.rightControllerRot[3] = orientation.w;
+    // Each hand aims at the point 2 m along the gaze, so its laser meets the reticle.
+    const Vector head = {pose.headPosition[0], pose.headPosition[1], pose.headPosition[2]};
+    const Vector gaze = rotate(orientation, {0.0f, 0.0f, -2.0f});
+    const Quaternion bodyYaw = axisAngle(0.0f, 1.0f, 0.0f, pose.yaw);
+    const auto placeHand = [&](const float* offset, float* position, float* rotation) {
+        const Vector local = rotate(bodyYaw, {offset[0], offset[1], offset[2]});
+        const Vector hand = {head.x + local.x, head.y + local.y, head.z + local.z};
+        const Vector aim = {head.x + gaze.x - hand.x, head.y + gaze.y - hand.y, head.z + gaze.z - hand.z};
+        const float length = std::max(std::sqrt(aim.x * aim.x + aim.y * aim.y + aim.z * aim.z), 1e-4f);
+        const Quaternion q = headQuaternion(std::atan2(-aim.x, -aim.z), std::asin(std::clamp(aim.y / length, -1.0f, 1.0f)), 0.0f);
+        position[0] = hand.x;
+        position[1] = hand.y;
+        position[2] = hand.z;
+        rotation[0] = q.x;
+        rotation[1] = q.y;
+        rotation[2] = q.z;
+        rotation[3] = q.w;
+    };
+    placeHand(pose.leftHandOffset, packet.leftControllerPos, packet.leftControllerRot);
+    placeHand(pose.rightHandOffset, packet.rightControllerPos, packet.rightControllerRot);
 
     if (pressedKeys.contains(Qt::Key_F))
     {

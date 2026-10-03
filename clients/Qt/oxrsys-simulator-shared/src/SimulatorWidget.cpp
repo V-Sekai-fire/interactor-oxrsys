@@ -5,6 +5,7 @@
 #include <QAbstractButton>
 #include <QAbstractSocket>
 #include <QApplication>
+#include <QCheckBox>
 #include <QCoreApplication>
 #include <QCursor>
 #include <QDateTime>
@@ -882,6 +883,11 @@ void SimulatorWidget::buildUi()
     fovRow->addWidget(simulatorFovSlider_, 1);
     fovRow->addWidget(simulatorFovValueLabel_);
     simulatorLayout->addLayout(fovRow);
+    // Off, the headset has no controllers and the dashboard falls back to gaze and the headset button.
+    auto* controllers = new QCheckBox("Controllers", simulatorPanel);
+    controllers->setChecked(controllersPresent_);
+    connect(controllers, &QCheckBox::toggled, this, [this](bool on) { controllersPresent_ = on; });
+    simulatorLayout->addWidget(controllers);
     sideLayout->addWidget(simulatorPanel);
     sideLayout->addStretch(1);
     rootLayout->addWidget(side);
@@ -1162,7 +1168,8 @@ void SimulatorWidget::fillTrackingPacket(oxr::protocol::TrackingPacket& packet) 
         monotonicNowNs(),
         static_cast<float>(simulatorFovDegrees_),
         simulatorPerEyeAspect(),
-        packet);
+        packet,
+        controllersPresent_);
 }
 
 float SimulatorWidget::simulatorPerEyeAspect() const

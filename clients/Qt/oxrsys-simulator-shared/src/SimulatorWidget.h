@@ -159,5 +159,6 @@ private:
     bool hasLastMousePosition_ = false;
     bool mouseCaptured_ = false;
     int simulatorFovDegrees_ = 100;
+    bool controllersPresent_ = true;
     oxrsys::qt_simulator::SimulatorTrackingPose trackingPose_;
 };
