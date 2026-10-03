@@ -94,6 +94,7 @@ private:
 #endif
     void setMouseCaptured(bool captured);
     void toggleMouseCaptured();
+    void recentreCapturedCursor();
     void accumulateMouseDelta(const QPointF& delta);
     void setKeyPressed(int key, bool pressed);
     void resetInputState();

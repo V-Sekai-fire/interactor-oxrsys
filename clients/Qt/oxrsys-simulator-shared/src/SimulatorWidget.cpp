@@ -5,6 +5,7 @@
 #include <QAbstractButton>
 #include <QAbstractSocket>
 #include <QCoreApplication>
+#include <QCursor>
 #include <QDateTime>
 #include <QEvent>
 #include <QFocusEvent>
@@ -786,6 +787,10 @@ bool SimulatorWidget::eventFilter(QObject* watched, QEvent* event)
             {
                 accumulateMouseDelta(delta);
             }
+            if (mouseCaptured_)
+            {
+                recentreCapturedCursor();
+            }
             event->accept();
             return true;
         }
@@ -1195,6 +1200,7 @@ void SimulatorWidget::setMouseCaptured(bool captured)
             previewWidget_->grabMouse();
             previewWidget_->setCursor(Qt::BlankCursor);
             previewWidget_->setFocus(Qt::MouseFocusReason);
+            recentreCapturedCursor();
         }
         else
         {
@@ -1202,6 +1208,18 @@ void SimulatorWidget::setMouseCaptured(bool captured)
             previewWidget_->setCursor(Qt::CrossCursor);
         }
     }
+}
+
+// Captured look warps the cursor back to the preview's centre, so turning never stops at a screen edge.
+void SimulatorWidget::recentreCapturedCursor()
+{
+    const QPoint centre = previewWidget_->rect().center();
+    if (lastMousePosition_.toPoint() != centre || !hasLastMousePosition_)
+    {
+        QCursor::setPos(previewWidget_->mapToGlobal(centre));
+    }
+    lastMousePosition_ = centre;
+    hasLastMousePosition_ = true;
 }
 
 void SimulatorWidget::toggleMouseCaptured()
