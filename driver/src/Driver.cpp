@@ -617,8 +617,8 @@ private:
     std::atomic<int64_t> nextVsyncNs_{0};
 };
 
-// A hand that SteamVR sees only while its grip or trigger is held, so it draws that hand's laser;
-// released, it reports disconnected and the head pose is the pointer again.
+// A hand that is connected while the client reports its controller active; without controllers the
+// dashboard pointer is the head and the headset button selects.
 class Controller final : public ITrackedDeviceServerDriver
 {
 public:
@@ -636,6 +636,7 @@ public:
         WriteString(c, Prop_SerialNumber_String, left_ ? "OXRSYS-LEFT-0" : "OXRSYS-RIGHT-0");
         WriteString(c, Prop_ManufacturerName_String, "OXRSys");
         WriteString(c, Prop_ControllerType_String, "oxrsys_controller");
+        WriteString(c, Prop_RenderModelName_String, "{oxrsys}oxrsys_controller");
         WriteString(c, Prop_InputProfilePath_String, "{oxrsys}/input/oxrsys_controller_profile.json");
         WriteProperty(c, Prop_ControllerRoleHint_Int32,
                       static_cast<int32_t>(left_ ? TrackedControllerRole_LeftHand : TrackedControllerRole_RightHand),
@@ -681,7 +682,8 @@ public:
         pose_.qRotation.z = rotation[2];
         pose_.qRotation.w = rotation[3];
         pose_.result = TrackingResult_Running_OK;
-        const bool present = grip > 0.5f || trigger > 0.5f;
+        const bool present = (packet.trackingFlags & (left_ ? oxr::protocol::TRACKING_FLAG_LEFT_CONTROLLER_ACTIVE
+                                                            : oxr::protocol::TRACKING_FLAG_RIGHT_CONTROLLER_ACTIVE)) != 0;
         pose_.poseIsValid = present;
         pose_.deviceIsConnected = present;
         gHost->TrackedDevicePoseUpdated(id_, pose_, sizeof(pose_));
