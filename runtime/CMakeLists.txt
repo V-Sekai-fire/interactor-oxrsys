@@ -34,7 +34,7 @@ elseif(WIN32)
     list(APPEND OXRSYS_RUNTIME_SOURCES
         src/SwapchainVulkan.cpp
         src/D3D11Interop.cpp
-        src/NvencVideoEncoder.cpp
+        src/PyroWaveVideoEncoder.cpp
     )
 else()
     message(FATAL_ERROR
@@ -55,11 +55,9 @@ set(OXRSYS_RUNTIME_LINK_LIBRARIES
     ${CMAKE_DL_LIBS}
 )
 
-if(NOT WIN32)
-    list(APPEND OXRSYS_RUNTIME_LINK_LIBRARIES
-        oxrsys_pyrowave
-    )
-endif()
+list(APPEND OXRSYS_RUNTIME_LINK_LIBRARIES
+    oxrsys_pyrowave
+)
 
 target_include_directories(oxrsys_runtime PRIVATE
     src
@@ -91,11 +89,6 @@ if(WIN32)
     if(MSVC)
         target_compile_options(oxrsys_runtime PRIVATE /utf-8)
     endif()
-    # NVENC is reached through the driver's nvEncodeAPI64.dll at runtime (nothing linked);
-    # the struct layouts come from V-Sekai-fire/nv-codec-headers.
-    target_include_directories(oxrsys_runtime PRIVATE
-        ${CMAKE_SOURCE_DIR}/third_party/nv-codec-headers/include
-    )
     list(APPEND OXRSYS_RUNTIME_LINK_LIBRARIES ws2_32 d3d11 dxgi)
 endif()
 

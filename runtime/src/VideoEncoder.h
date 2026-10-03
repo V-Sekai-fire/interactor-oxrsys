@@ -16,10 +16,8 @@
 /**
  * Video encoder facade.
  *
- * Apple builds encode H.265 with VideoToolbox and Metal textures, or PyroWave when
- * streaming.codec = "pyrowave". Linux builds
- * encode PyroWave through its Vulkan C API and keep backend-specific graphics
- * readback state behind GraphicsContext.
+ * Every build streams PyroWave: Apple through its Metal port, Windows and Linux through
+ * its Vulkan C API, with backend-specific graphics state behind GraphicsContext.
  */
 class VideoEncoder
 {
@@ -92,7 +90,7 @@ public:
     bool IsInitialized() const
     {
         return videoToolbox_.session != nullptr || pyrowave_.encoder != nullptr ||
-               nvenc_ != nullptr;
+               win32_ != nullptr;
     }
 
     // Stats
@@ -146,7 +144,7 @@ private:
     GraphicsContext graphicsContext_ = {};
     VideoToolboxState videoToolbox_ = {};
     PyroWaveState pyrowave_ = {};
-    void* nvenc_ = nullptr;           // NvencState* (NvencVideoEncoder.cpp)
+    void* win32_ = nullptr;           // Win32PyroWaveState* (PyroWaveVideoEncoder.cpp)
 
     uint32_t width_ = 0;       // Total encoded width (may be 2x eye width for stereo)
     uint32_t height_ = 0;
