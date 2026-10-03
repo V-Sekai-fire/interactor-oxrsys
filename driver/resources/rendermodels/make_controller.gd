@@ -32,38 +32,31 @@ func _initialize() -> void:
 	body = CSGCombiner3D.new()
 	get_root().add_child(body)
 
-	# Head: a flattened ovoid around the tracked point, with a flat top deck.
+	# Head: a rounded puck over the tracked point, its top face carrying the thumbstick and buttons.
 	var head := CSGSphere3D.new()
-	head.radius = 0.03
-	head.radial_segments = 32
-	head.rings = 16
-	part(head, Vector3(0, 0, -0.01), Vector3.ZERO, CSGShape3D.OPERATION_UNION, Vector3(1.0, 0.62, 1.45))
-	var deck := CSGBox3D.new()
-	deck.size = Vector3(0.1, 0.04, 0.12)
-	part(deck, Vector3(0, 0.031, -0.01), Vector3.ZERO, CSGShape3D.OPERATION_SUBTRACTION)
+	head.radius = 0.036
+	head.radial_segments = 40
+	head.rings = 20
+	part(head, Vector3(0, 0, -0.004), Vector3.ZERO, CSGShape3D.OPERATION_UNION, Vector3(1.0, 0.5, 1.08))
 
-	# Nose ring: the laser leaves through its centre.
-	var ring := CSGTorus3D.new()
-	ring.inner_radius = 0.011
-	ring.outer_radius = 0.017
-	ring.sides = 24
-	ring.ring_sides = 12
-	part(ring, Vector3(0, 0, -0.052), Vector3(90, 0, 0))
-
-	# Grip: raked back and down from under the head, closed with a rounded butt.
-	part(cylinder(0.017, 0.105), Vector3(0, -0.045, 0.035), Vector3(-35, 0, 0))
+	# Grip: a short capsule raked back under the head.
+	part(cylinder(0.019, 0.07), Vector3(0, -0.042, 0.016), Vector3(-15, 0, 0))
 	var butt := CSGSphere3D.new()
-	butt.radius = 0.017
+	butt.radius = 0.019
 	butt.radial_segments = 24
 	butt.rings = 12
-	part(butt, Vector3(0, -0.088, 0.065))
+	part(butt, Vector3(0, -0.076, 0.025))
 
-	# Trigger under the nose, and a thumbstick well with its stick on the deck.
+	# Thumbstick with a wide cap, and two face buttons ahead of it.
+	part(cylinder(0.005, 0.01, 16), Vector3(0, 0.019, 0.006))
+	part(cylinder(0.0105, 0.005, 24), Vector3(0, 0.025, 0.006))
+	part(cylinder(0.0042, 0.004, 16), Vector3(-0.011, 0.017, -0.016))
+	part(cylinder(0.0042, 0.004, 16), Vector3(0.011, 0.017, -0.016))
+
+	# Trigger under the front of the head, where the index finger rests.
 	var trigger := CSGBox3D.new()
-	trigger.size = Vector3(0.012, 0.024, 0.014)
-	part(trigger, Vector3(0, -0.024, -0.03), Vector3(25, 0, 0))
-	part(cylinder(0.011, 0.012), Vector3(0, 0.012, -0.002), Vector3.ZERO, CSGShape3D.OPERATION_SUBTRACTION)
-	part(cylinder(0.0075, 0.014), Vector3(0, 0.012, -0.002))
+	trigger.size = Vector3(0.016, 0.022, 0.01)
+	part(trigger, Vector3(0, -0.019, -0.026), Vector3(30, 0, 0))
 
 
 func _process(_delta: float) -> bool:
