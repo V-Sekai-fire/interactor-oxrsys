@@ -4,7 +4,9 @@
 
 #include <QAbstractButton>
 #include <QAbstractSocket>
+#include <QApplication>
 #include <QCoreApplication>
+#include <QCursor>
 #include <QDateTime>
 #include <QEvent>
 #include <QFocusEvent>
@@ -372,7 +374,8 @@ public:
         badges.push_back(renderBadge(videoBadgeRect(bounds), dpr,
                                      [this](QPainter& p, const QRectF& r) { drawVideoBadge(p, r); }));
 
-        const QPointF c = reticleCenter(bounds);
+        // Over video the game already turns the view, so the reticle stays at the centre.
+        const QPointF c = bounds.center();
         const QRectF segments[] = {
             {c.x() - 16, c.y() - 0.75, 12, 1.5}, {c.x() + 4, c.y() - 0.75, 12, 1.5},
             {c.x() - 0.75, c.y() - 16, 1.5, 12}, {c.x() - 0.75, c.y() + 4, 1.5, 12},
@@ -764,7 +767,13 @@ bool SimulatorWidget::eventFilter(QObject* watched, QEvent* event)
             hasLastMousePosition_ = true;
             if (mouseEvent->button() == Qt::RightButton)
             {
-                toggleMouseCaptured();
+                toggleMouseCaptured("right click");
+                event->accept();
+                return true;
+            }
+            if (mouseEvent->button() == Qt::LeftButton && !mouseCaptured_)
+            {
+                setMouseCaptured(true, "left click");
                 event->accept();
                 return true;
             }
@@ -793,6 +802,11 @@ bool SimulatorWidget::eventFilter(QObject* watched, QEvent* event)
             {
                 accumulateMouseDelta(delta);
             }
+            if (mouseCaptured_)
+            {
+                ++captureMoves_;
+                recentreCapturedCursor();
+            }
             event->accept();
             return true;
         }
@@ -814,8 +828,11 @@ bool SimulatorWidget::eventFilter(QObject* watched, QEvent* event)
             keyReleaseEvent(static_cast<QKeyEvent*>(event));
             return true;
         case QEvent::FocusOut:
-            setMouseCaptured(false);
-            resetInputState();
+            if (!focusStaysInside())
+            {
+                setMouseCaptured(false, "preview lost focus");
+                resetInputState();
+            }
             break;
         default:
             break;
@@ -828,7 +845,7 @@ void SimulatorWidget::keyPressEvent(QKeyEvent* event)
 {
     if (event->key() == Qt::Key_Escape)
     {
-        setMouseCaptured(false);
+        setMouseCaptured(false, "escape");
         event->accept();
         return;
     }
@@ -850,9 +867,19 @@ void SimulatorWidget::keyReleaseEvent(QKeyEvent* event)
 
 void SimulatorWidget::focusOutEvent(QFocusEvent* event)
 {
-    setMouseCaptured(false);
-    resetInputState();
+    if (!focusStaysInside())
+    {
+        setMouseCaptured(false, "simulator lost focus");
+        resetInputState();
+    }
     QWidget::focusOutEvent(event);
+}
+
+// Focus moving between the simulator and its preview must not release capture; leaving the window does.
+bool SimulatorWidget::focusStaysInside() const
+{
+    const QWidget* focused = QApplication::focusWidget();
+    return focused != nullptr && (focused == this || isAncestorOf(focused));
 }
 
 void SimulatorWidget::updateControls()
@@ -1185,13 +1212,26 @@ bool SimulatorWidget::decodeVideoFrame(const AssembledVideoFrame& frame)
     return true;
 }
 
-void SimulatorWidget::setMouseCaptured(bool captured)
+void SimulatorWidget::setMouseCaptured(bool captured, const char* reason)
 {
     if (mouseCaptured_ == captured)
     {
         return;
     }
 
+    // One span per capture, from the input that took it to the one that released it.
+    if (captured)
+    {
+        captureSpan_.start();
+        captureStartReason_ = reason;
+        captureMoves_ = 0;
+        captureRecentres_ = 0;
+    }
+    else
+    {
+        qInfo("span mouse_capture start=\"%s\" end=\"%s\" duration_ms=%lld moves=%d recentres=%d", captureStartReason_,
+              reason, static_cast<long long>(captureSpan_.elapsed()), captureMoves_, captureRecentres_);
+    }
     mouseCaptured_ = captured;
     hasLastMousePosition_ = false;
     pendingMouseDelta_ = {};
@@ -1202,6 +1242,7 @@ void SimulatorWidget::setMouseCaptured(bool captured)
             previewWidget_->grabMouse();
             previewWidget_->setCursor(Qt::BlankCursor);
             previewWidget_->setFocus(Qt::MouseFocusReason);
+            recentreCapturedCursor();
         }
         else
         {
@@ -1211,9 +1252,22 @@ void SimulatorWidget::setMouseCaptured(bool captured)
     }
 }
 
-void SimulatorWidget::toggleMouseCaptured()
+// Captured look warps the cursor back to the preview's centre, so turning never stops at a screen edge.
+void SimulatorWidget::recentreCapturedCursor()
 {
-    setMouseCaptured(!mouseCaptured_);
+    const QPoint centre = previewWidget_->rect().center();
+    if (lastMousePosition_.toPoint() != centre || !hasLastMousePosition_)
+    {
+        QCursor::setPos(previewWidget_->mapToGlobal(centre));
+        ++captureRecentres_;
+    }
+    lastMousePosition_ = centre;
+    hasLastMousePosition_ = true;
+}
+
+void SimulatorWidget::toggleMouseCaptured(const char* reason)
+{
+    setMouseCaptured(!mouseCaptured_, reason);
 }
 
 void SimulatorWidget::accumulateMouseDelta(const QPointF& delta)
