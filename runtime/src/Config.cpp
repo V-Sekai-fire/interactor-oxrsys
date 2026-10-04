@@ -431,6 +431,14 @@ ConfigValues ParseConfigToml(std::istream& input, const ConfigValues& defaults)
             {
                 values.bodyHologram = ParseBool(value);
             }
+            else if (key == "controllers")
+            {
+                value = ParseString(value);
+                if (value == "frame" || value == "index" || value == "touch_plus")
+                {
+                    values.controllers = value;
+                }
+            }
             else if (key == "mixed_reality_mode")
             {
                 value = ParseString(value);

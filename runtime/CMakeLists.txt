@@ -2,6 +2,7 @@
 
 set(OXRSYS_RUNTIME_SOURCES
     src/Config.cpp
+    src/ControllerLayout.cpp
     src/EntryPoint.cpp
     src/Runtime.cpp
     src/RuntimeStatus.cpp

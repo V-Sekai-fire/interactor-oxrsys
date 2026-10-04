@@ -88,7 +88,8 @@ public:
                                               const std::string& profilePath) const;
     XrPosef GetPoseComponentForProfile(Hand hand, const std::string& componentPath,
                                        const std::string& profilePath) const;
-    void SetStreamingClientName(const std::string& clientName);
+    // controllers is the `controllers` config value, for a client whose name matches no headset.
+    void SetStreamingClientName(const std::string& clientName, const std::string& controllers = "frame");
 
     // Conformance automation overrides
     void SetAutomationInteractionProfile(Hand hand, const std::string& interactionProfile, bool isActive);
