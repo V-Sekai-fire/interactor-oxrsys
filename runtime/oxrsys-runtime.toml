@@ -28,10 +28,6 @@ resolution_scale = 0.75
 # swapchain/render resolution is unchanged.
 dynamic_resolution_min_scale = 0.50
 
-# Keyframe interval in seconds (1-10). Higher = less bandwidth spikes, slower recovery.
-# Default 2 is a good balance. Use 1 for lossy WiFi, 5+ for USB.
-keyframe_interval_sec = 2
-
 # Encoder speed preset: "quality", "balanced", "speed"
 # speed  = lowest latency, fastest encode, lower quality
 # balanced = default, good mix

@@ -1296,10 +1296,7 @@ void StreamingServer::EncodeThread()
         double queueWaitMs = (double)(SteadyClockNowNs() - frame.timestampNs) / 1.0e6;
         telemetry->queueWaitMs.Add(queueWaitMs);
 
-        uint32_t currentRefreshHz = std::max(targetRefreshRateHz_.load(), 1u);
         const ConfigValues config = Config::Get().GetValues();
-        uint32_t keyframeFrames = std::max(config.keyframeIntervalSec * currentRefreshHz, 1u);
-        bool forceKeyframe = frame.frameIndex < 5 || (frame.frameIndex % keyframeFrames == 0);
 
         std::shared_ptr<VideoEncoder> encoder;
         std::shared_ptr<CallbackAccess> callbackAccess;
@@ -1321,11 +1318,6 @@ void StreamingServer::EncodeThread()
         {
             ReleaseStreamingFrame(frame);
             continue;
-        }
-
-        if (forceKeyframe)
-        {
-            encoder->ForceKeyframe();
         }
 
         auto encodedFrame = std::make_shared<EncodedVideoFrame>();
@@ -1665,7 +1657,6 @@ void StreamingServer::HandleClientConnect(const oxr::protocol::ClientConnect& cl
             if (encoder_->Initialize(layoutState.encodedWidth, layoutState.encodedHeight, negotiatedRefresh,
                                      bitrateMbps, graphicsContext_))
             {
-                encoder_->ForceKeyframe();
                 frameIndex_ = 0;
                 encoderReady = true;
                 spdlog::info("StreamingServer: Client connected via WiFi: {} ({}:{}) refresh={}Hz",
@@ -1808,7 +1799,6 @@ void StreamingServer::HandleUsbClientConnect(const oxr::protocol::ClientConnect&
             if (encoder_->Initialize(layoutState.encodedWidth, layoutState.encodedHeight, negotiatedRefresh,
                                      bitrateMbps, graphicsContext_))
             {
-                encoder_->ForceKeyframe();
                 frameIndex_ = 0;
                 encoderReady = true;
                 spdlog::info("StreamingServer: Client connected via usb_adb: {} refresh={}Hz",
@@ -2026,12 +2016,6 @@ void StreamingServer::HandleKeyframeRequest(const oxr::protocol::RequestKeyframe
 {
     requestKeyframeCount_.fetch_add(1);
     requestKeyframeTotalForAbr_.fetch_add(1);
-
-    std::lock_guard<std::mutex> lock(encoderMutex_);
-    if (encoder_ != nullptr)
-    {
-        encoder_->ForceKeyframe();
-    }
 
     spdlog::info("StreamingServer: Keyframe requested (reasons=0x{:x}, detail={})",
                   request.reasonFlags, request.detail);
@@ -2272,7 +2256,6 @@ void StreamingServer::ApplyPendingStreamConfigLocked(
 
     frameQueue_.Clear();
     ClearVideoSendQueue();
-    newEncoder->ForceKeyframe();
 
     {
         std::lock_guard<std::mutex> lock(encoderMutex_);

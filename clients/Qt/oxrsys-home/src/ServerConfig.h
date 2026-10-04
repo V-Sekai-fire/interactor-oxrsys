@@ -18,7 +18,6 @@ struct ServerConfig
     int refreshRateHz = 72;
     double resolutionScale = 0.75;
     double dynamicResolutionMinScale = 0.50;
-    int keyframeIntervalSec = 2;
     QString encoderPreset = "balanced";
     QString transport = "auto";
     QString foveatedEncodingPreset = "off";

@@ -878,7 +878,6 @@ QWidget* MainWindow::buildStreamingTab()
               &dynamicResolutionValueLabel_,
               25,
               100);
-    addSlider("Keyframe Interval", &keyframeSlider_, &keyframeValueLabel_, 1, 10);
 
     auto* form = new QFormLayout();
     refreshRateCombo_ = new QComboBox(configBox);
@@ -962,7 +961,6 @@ QWidget* MainWindow::buildStreamingTab()
     connect(bitrateSlider_, &QSlider::valueChanged, this, connectConfigChanged);
     connect(resolutionSlider_, &QSlider::valueChanged, this, connectConfigChanged);
     connect(dynamicResolutionSlider_, &QSlider::valueChanged, this, connectConfigChanged);
-    connect(keyframeSlider_, &QSlider::valueChanged, this, connectConfigChanged);
     connect(refreshRateCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, connectConfigChanged);
     connect(encoderPresetCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, connectConfigChanged);
     connect(foveatedEncodingPresetCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, connectConfigChanged);
@@ -1276,7 +1274,7 @@ void MainWindow::refreshStreaming()
         runtimeEnabledCheckBox_, fileLoggingCheckBox_, questLogcatCheckBox_,
         clientUpscalingCheckBox_, headsetAudioCheckBox_, passthroughCheckBox_, spatialEnabledCheckBox_,
         spatialAnchorsCheckBox_, spatialSceneCheckBox_, spatialPersistenceCheckBox_,
-        bitrateSlider_, resolutionSlider_, dynamicResolutionSlider_, keyframeSlider_,
+        bitrateSlider_, resolutionSlider_, dynamicResolutionSlider_,
         refreshRateCombo_, encoderPresetCombo_, foveatedEncodingPresetCombo_,
         clientFoveationPresetCombo_, clientReprojectionCombo_, abrModeCombo_,
         occlusionModeCombo_, configTransportCombo_, usbDeviceCombo_,
@@ -1299,7 +1297,6 @@ void MainWindow::refreshStreaming()
     bitrateSlider_->setValue(config.bitrateMbps);
     resolutionSlider_->setValue(qRound(config.resolutionScale * 100.0));
     dynamicResolutionSlider_->setValue(qRound(config.dynamicResolutionMinScale * 100.0));
-    keyframeSlider_->setValue(config.keyframeIntervalSec);
     refreshRateCombo_->setCurrentIndex(std::max(refreshRateCombo_->findData(config.refreshRateHz), 0));
     encoderPresetCombo_->setCurrentIndex(std::max(encoderPresetCombo_->findData(config.encoderPreset), 0));
     foveatedEncodingPresetCombo_->setCurrentIndex(
@@ -1333,7 +1330,6 @@ void MainWindow::refreshStreaming()
     resolutionValueLabel_->setText(QString::number(config.resolutionScale, 'f', 2));
     dynamicResolutionValueLabel_->setText(
         QString::number(config.dynamicResolutionMinScale, 'f', 2));
-    keyframeValueLabel_->setText(QString("%1 s").arg(config.keyframeIntervalSec));
     adbStatusLabel_->setText(model_->adbStatus().message);
     clearAdbPathButton_->setEnabled(!model_->customAdbPath().isEmpty());
     usbStatusLabel_->setText(model_->questUsbStatus());
@@ -1500,7 +1496,6 @@ void MainWindow::updateConfigFromControls()
     config.refreshRateHz = refreshRateCombo_->currentData().toInt();
     config.resolutionScale = resolutionSlider_->value() / 100.0;
     config.dynamicResolutionMinScale = dynamicResolutionSlider_->value() / 100.0;
-    config.keyframeIntervalSec = keyframeSlider_->value();
     config.encoderPreset = encoderPresetCombo_->currentData().toString();
     config.foveatedEncodingPreset = foveatedEncodingPresetCombo_->currentData().toString();
     config.clientFoveationPreset = clientFoveationPresetCombo_->currentData().toString();
@@ -1513,6 +1508,5 @@ void MainWindow::updateConfigFromControls()
     resolutionValueLabel_->setText(QString::number(config.resolutionScale, 'f', 2));
     dynamicResolutionValueLabel_->setText(
         QString::number(config.dynamicResolutionMinScale, 'f', 2));
-    keyframeValueLabel_->setText(QString("%1 s").arg(config.keyframeIntervalSec));
     model_->scheduleStructuredConfigSave();
 }

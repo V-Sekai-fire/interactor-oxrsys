@@ -746,7 +746,6 @@ bool VideoEncoder::EncodeInternal(FrameSource frameSource, bool stereo,
         EncodeWaitForFrameImage(cmdBuf, frameSource.right);
     }
 
-    bool forceKeyframe = forceKeyframe_.exchange(false);
     const bool useFoveatedEncoding = stereo &&
         foveationSettings_.enabled &&
         metal_.foveationPipeline != nullptr &&
@@ -937,7 +936,7 @@ bool VideoEncoder::EncodeInternal(FrameSource frameSource, bool stereo,
     context->slotIndex = slotIndex;
     context->metrics.frameNumber = frameNumberCounter_.fetch_add(1);
     context->metrics.timestampNs = timestampNs;
-    context->metrics.keyframe = forceKeyframe;
+    context->metrics.keyframe = true; // every PyroWave frame is intra-only
     context->encodeStart = Clock::now();
     context->encodeSubmitFinished = context->encodeStart;
 
@@ -1028,11 +1027,6 @@ void VideoEncoder::DestroySlots()
     }
 
     inFlightFrameCount_.store(0);
-}
-
-void VideoEncoder::ForceKeyframe()
-{
-    forceKeyframe_.store(true);
 }
 
 void VideoEncoder::SetBitrate(uint32_t bitrateMbps)

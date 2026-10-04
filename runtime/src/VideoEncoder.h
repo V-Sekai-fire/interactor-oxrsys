@@ -84,9 +84,6 @@ public:
     // The body hologram to draw into the next encoded frame; backends without a drawing path ignore it.
     void SetBodyOverlay(const BodyOverlay& overlay) { bodyOverlay_ = overlay; }
 
-    // Force a keyframe on the next encode
-    void ForceKeyframe();
-
     // Update encoding bitrate mid-stream; the next frame's byte budget follows it
     void SetBitrate(uint32_t bitrateMbps);
     uint32_t GetBitrateMbps() const { return bitrateMbps_; }
@@ -157,7 +154,6 @@ private:
     uint32_t bitrateMbps_ = 50;
     FoveationSettings foveationSettings_ = {};
     uint32_t frameCount_ = 0;
-    std::atomic<bool> forceKeyframe_{false};
     std::atomic<bool> shuttingDown_{false};
     std::atomic<bool> foveationValidationWarningLogged_{false};
     std::atomic<uint32_t> droppedFrameCount_{0};
