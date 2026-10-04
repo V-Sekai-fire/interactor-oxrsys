@@ -584,6 +584,11 @@ void InputManager::SetAutomationPose(Hand hand, const std::string& componentPath
     GetAutomationState(hand).poseStates[componentPath] = pose;
 }
 
+bool InputManager::HasAutomationActivity(Hand hand) const
+{
+    return GetAutomationState(hand).hasExplicitActivity;
+}
+
 bool InputManager::IsInputDeviceActive(Hand hand) const
 {
     const auto& automation = GetAutomationState(hand);

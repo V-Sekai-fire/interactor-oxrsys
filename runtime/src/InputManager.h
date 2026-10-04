@@ -92,6 +92,7 @@ public:
 
     // Conformance automation overrides
     void SetAutomationInteractionProfile(Hand hand, const std::string& interactionProfile, bool isActive);
+    bool HasAutomationActivity(Hand hand) const;
     void SetAutomationBoolean(Hand hand, const std::string& componentPath, bool state);
     void SetAutomationFloat(Hand hand, const std::string& componentPath, float state);
     void SetAutomationVector2f(Hand hand, const std::string& componentPath, XrVector2f state);

@@ -104,6 +104,8 @@ struct SuggestedBinding
 static std::unordered_map<uint64_t, std::vector<SuggestedBinding>> gSuggestedBindings;
 static bool gActionSetsAttached = false;
 static std::vector<uint64_t> gAttachedActionSetHandles;
+// Per hand, left then right: the profile the last xrSyncActions selected, which is what apps see.
+static std::string gSyncedInteractionProfiles[2];
 static std::vector<std::unique_ptr<DebugUtilsMessengerState>> gDebugUtilsMessengers;
 
 // Hand trackers
@@ -171,6 +173,8 @@ static void CleanupRuntimeState()
     gSuggestedBindings.clear();
     gActionSetsAttached = false;
     gAttachedActionSetHandles.clear();
+    gSyncedInteractionProfiles[0].clear();
+    gSyncedInteractionProfiles[1].clear();
     gDebugUtilsMessengers.clear();
     gInstance.reset();
 }
@@ -1028,6 +1032,8 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrDestroySession(XrSession session)
     gHandTrackers.clear();
     gActionSetsAttached = false;
     gAttachedActionSetHandles.clear();
+    gSyncedInteractionProfiles[0].clear();
+    gSyncedInteractionProfiles[1].clear();
     gSession.reset();
     return XR_SUCCESS;
 }
@@ -1480,6 +1486,7 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetReferenceSpaceBoundsRect(
 // ============================================================================
 
 static std::string ComponentFromBindingPath(const std::string& path);
+static std::string ResolveParentComponent(const std::string& component, XrActionType type);
 
 static bool IsValidSingleLevelPathName(const char* name)
 {
@@ -1894,7 +1901,7 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrSuggestInteractionProfileBindings(
         binding.topLevelPath = topLevelPath;
         binding.profilePathString = profilePathString;
         binding.bindingPathString = pathStr;
-        binding.componentPath = ComponentFromBindingPath(pathStr);
+        binding.componentPath = ResolveParentComponent(ComponentFromBindingPath(pathStr), action->GetType());
         bindings.push_back(std::move(binding));
         spdlog::debug("OXRSys: Binding {} -> {}", actionHandle, pathStr);
     }
@@ -1954,6 +1961,56 @@ static InputManager::Hand HandFromBindingPath(const std::string& path)
 }
 
 // Helper: extract the component from a binding path (e.g. "select/click", "grip/pose")
+// Whether an input of this component can drive an action of this type; others leave it inactive.
+static bool BindingFitsActionType(const SuggestedBinding& binding, XrActionType type)
+{
+    const bool output = binding.bindingPathString.find("/output/") != std::string::npos;
+    if (type == XR_ACTION_TYPE_VIBRATION_OUTPUT)
+    {
+        return output;
+    }
+    if (output)
+    {
+        return false;
+    }
+    const std::string& component = binding.componentPath;
+    const bool pose = component.ends_with("/pose");
+    const bool twoAxis = component == "thumbstick" || component == "trackpad" || component == "joystick";
+    switch (type)
+    {
+        case XR_ACTION_TYPE_POSE_INPUT:
+            return pose;
+        case XR_ACTION_TYPE_VECTOR2F_INPUT:
+            return twoAxis;
+        case XR_ACTION_TYPE_BOOLEAN_INPUT:
+        case XR_ACTION_TYPE_FLOAT_INPUT:
+            return !pose && !twoAxis;
+        default:
+            return false;
+    }
+}
+
+// A binding to a parent path (".../input/menu") reads the child the action type implies.
+static std::string ResolveParentComponent(const std::string& component, XrActionType type)
+{
+    if (component.empty() || component.find('/') != std::string::npos)
+    {
+        return component;
+    }
+    static const std::unordered_set<std::string> clickOnly = {"menu", "select", "system", "a", "b", "x", "y"};
+    switch (type)
+    {
+        case XR_ACTION_TYPE_BOOLEAN_INPUT:
+            return component + "/click";
+        case XR_ACTION_TYPE_FLOAT_INPUT:
+            return component + (clickOnly.contains(component) ? "/click" : "/value");
+        case XR_ACTION_TYPE_POSE_INPUT:
+            return component + "/pose";
+        default:
+            return component;
+    }
+}
+
 static std::string ComponentFromBindingPath(const std::string& path)
 {
     // Path format: /user/hand/<side>/input/<component>
@@ -2204,18 +2261,17 @@ static XrResult ValidateActionStateQuery(
     return XR_SUCCESS;
 }
 
-static bool IsActionSetActive(const XrActionsSyncInfo* syncInfo, ActionState* action)
+// topLevelPath narrows the check to sets active for that subaction; XR_NULL_PATH asks about the set.
+static bool IsActionSetActive(const XrActionsSyncInfo* syncInfo, ActionState* action,
+                              XrPath topLevelPath = XR_NULL_PATH)
 {
-    if (syncInfo->countActiveActionSets == 0 || syncInfo->activeActionSets == nullptr)
-    {
-        return std::find(gAttachedActionSetHandles.begin(), gAttachedActionSetHandles.end(),
-                          action->GetActionSet()->GetHandle()) != gAttachedActionSetHandles.end();
-    }
-
     uint64_t actionSetHandle = action->GetActionSet()->GetHandle();
     for (uint32_t i = 0; i < syncInfo->countActiveActionSets; i++)
     {
-        if (reinterpret_cast<uint64_t>(syncInfo->activeActionSets[i].actionSet) == actionSetHandle)
+        const XrActiveActionSet& active = syncInfo->activeActionSets[i];
+        if (reinterpret_cast<uint64_t>(active.actionSet) == actionSetHandle &&
+            (topLevelPath == XR_NULL_PATH || active.subactionPath == XR_NULL_PATH ||
+             active.subactionPath == topLevelPath))
         {
             return true;
         }
@@ -2243,7 +2299,7 @@ static void AccumulateBindingState(const InputManager& inputManager, const Sugge
 
     InputManager::Hand hand = HandFromBindingPath(binding.bindingPathString);
     bool deviceActive = inputManager.IsInputDeviceActive(hand);
-    if (inputManager.IsStreaming())
+    if (inputManager.IsStreaming() && !inputManager.HasAutomationActivity(hand))
     {
         deviceActive = binding.profilePathString == "/interaction_profiles/ext/hand_interaction_ext"
                            ? inputManager.IsHandTrackingActive(hand)
@@ -2364,11 +2420,7 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetCurrentInteractionProfile(
     }
     if (pathStr == "/user/hand/left" || pathStr == "/user/hand/right")
     {
-        InputManager::Hand hand = (pathStr == "/user/hand/right")
-                                      ? InputManager::Hand::Right
-                                      : InputManager::Hand::Left;
-        std::string profilePath = SelectCurrentInteractionProfileForInstance(
-            sess->GetInstance(), sess->GetInputManager(), hand);
+        const std::string& profilePath = gSyncedInteractionProfiles[pathStr == "/user/hand/right" ? 1 : 0];
         if (profilePath.empty())
         {
             interactionProfile->interactionProfile = XR_NULL_PATH;
@@ -2394,12 +2446,66 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrSyncActions(
     {
         return XR_ERROR_VALIDATION_FAILURE;
     }
-    if (!gActionSetsAttached)
+    if (syncInfo->countActiveActionSets > 0 && syncInfo->activeActionSets == nullptr)
     {
-        return XR_ERROR_ACTIONSET_NOT_ATTACHED;
+        return XR_ERROR_VALIDATION_FAILURE;
+    }
+    for (uint32_t i = 0; i < syncInfo->countActiveActionSets; ++i)
+    {
+        const uint64_t handle = reinterpret_cast<uint64_t>(syncInfo->activeActionSets[i].actionSet);
+        if (Runtime::Get().FromHandle<ActionSetState>(handle) == nullptr)
+        {
+            return XR_ERROR_HANDLE_INVALID;
+        }
+        if (std::find(gAttachedActionSetHandles.begin(), gAttachedActionSetHandles.end(), handle) ==
+            gAttachedActionSetHandles.end())
+        {
+            return XR_ERROR_ACTIONSET_NOT_ATTACHED;
+        }
+        const XrPath subactionPath = syncInfo->activeActionSets[i].subactionPath;
+        if (subactionPath != XR_NULL_PATH)
+        {
+            if (Runtime::Get().GetPathString(subactionPath).empty())
+            {
+                return XR_ERROR_PATH_INVALID;
+            }
+            const bool declared = std::any_of(gActions.begin(), gActions.end(), [&](const auto& action) {
+                const std::vector<XrPath>& paths = action->GetSubactionPaths();
+                return action->GetActionSet()->GetHandle() == handle &&
+                       std::find(paths.begin(), paths.end(), subactionPath) != paths.end();
+            });
+            if (!declared)
+            {
+                return XR_ERROR_PATH_UNSUPPORTED;
+            }
+        }
     }
 
     const InputManager& inputManager = sess->GetInputManager();
+    if (gActionSetsAttached)
+    {
+        bool profileChanged = false;
+        for (int i = 0; i < 2; ++i)
+        {
+            std::string selected = SelectCurrentInteractionProfileForInstance(
+                sess->GetInstance(), inputManager, i == 0 ? InputManager::Hand::Left : InputManager::Hand::Right);
+            if (selected != gSyncedInteractionProfiles[i])
+            {
+                gSyncedInteractionProfiles[i] = std::move(selected);
+                profileChanged = true;
+            }
+        }
+        if (profileChanged)
+        {
+            XrEventDataBuffer event{XR_TYPE_EVENT_DATA_BUFFER};
+            XrEventDataInteractionProfileChanged* changed =
+                reinterpret_cast<XrEventDataInteractionProfileChanged*>(&event);
+            changed->type = XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED;
+            changed->next = nullptr;
+            changed->session = session;
+            sess->GetInstance()->PushEvent(event);
+        }
+    }
     std::unordered_map<uint64_t, std::unordered_map<uint64_t, AggregatedActionState>> aggregatedStates;
     // Input reaches only a focused session; elsewhere every action syncs inactive.
     const bool focused = sess->GetState() == XR_SESSION_STATE_FOCUSED;
@@ -2428,6 +2534,19 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrSyncActions(
                 continue;
             }
 
+            // An input source bound in several active sets reaches only the highest-priority ones.
+            std::unordered_map<std::string, uint32_t> sourcePriority;
+            for (const auto& binding : profileIt->second)
+            {
+                auto* action = Runtime::Get().FromHandle<ActionState>(binding.actionHandle);
+                if (binding.topLevelPath == expectedTopLevelPath && action &&
+                    IsActionSetActive(syncInfo, action, binding.topLevelPath))
+                {
+                    uint32_t& top = sourcePriority[binding.bindingPathString];
+                    top = std::max(top, action->GetActionSet()->GetPriority());
+                }
+            }
+
             for (const auto& binding : profileIt->second)
             {
                 if (binding.topLevelPath != expectedTopLevelPath)
@@ -2436,7 +2555,9 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrSyncActions(
                 }
 
                 auto* action = Runtime::Get().FromHandle<ActionState>(binding.actionHandle);
-                if (!action || !IsActionSetActive(syncInfo, action))
+                if (!action || !IsActionSetActive(syncInfo, action, binding.topLevelPath) ||
+                    !BindingFitsActionType(binding, action->GetType()) ||
+                    action->GetActionSet()->GetPriority() < sourcePriority[binding.bindingPathString])
                 {
                     continue;
                 }
@@ -2911,6 +3032,14 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetInputSourceLocalizedName(
     if (!sess)
     {
         return XR_ERROR_HANDLE_INVALID;
+    }
+    if (getInfo->whichComponents == 0)
+    {
+        return XR_ERROR_VALIDATION_FAILURE;
+    }
+    if (Runtime::Get().GetPathString(getInfo->sourcePath).empty())
+    {
+        return XR_ERROR_PATH_INVALID;
     }
 
     std::string name = BuildLocalizedInputSourceName(sess, getInfo);

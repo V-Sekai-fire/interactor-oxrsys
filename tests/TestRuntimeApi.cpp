@@ -281,6 +281,32 @@ struct RuntimeSessionContext
         }
     }
 
+    // The runtime focuses a running session after a few submitted frames; input syncs only then.
+    void Focus()
+    {
+        for (int frame = 0; frame < 8 && !focused; ++frame)
+        {
+            XrFrameState frameState = {XR_TYPE_FRAME_STATE};
+            XR_CHECK(xrWaitFrame(session, nullptr, &frameState));
+            XR_CHECK(xrBeginFrame(session, nullptr));
+            XrFrameEndInfo endInfo = {XR_TYPE_FRAME_END_INFO};
+            endInfo.displayTime = frameState.predictedDisplayTime;
+            endInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+            XR_CHECK(xrEndFrame(session, &endInfo));
+            XrEventDataBuffer event = {XR_TYPE_EVENT_DATA_BUFFER};
+            while (xrPollEvent(instance, &event) == XR_SUCCESS)
+            {
+                if (event.type == XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED &&
+                    reinterpret_cast<XrEventDataSessionStateChanged*>(&event)->state == XR_SESSION_STATE_FOCUSED)
+                {
+                    focused = true;
+                }
+                event = {XR_TYPE_EVENT_DATA_BUFFER};
+            }
+        }
+        REQUIRE(focused);
+    }
+
     bool HasExtension(const char* extensionName) const
     {
         for (const char* enabledExtension : enabledExtensions)
@@ -306,6 +332,7 @@ struct RuntimeSessionContext
     XrSystemId systemId = XR_NULL_SYSTEM_ID;
     XrSession session = XR_NULL_HANDLE;
     XrSpace localSpace = XR_NULL_HANDLE;
+    bool focused = false;
 
     PFN_xrGetMetalGraphicsRequirementsKHR getMetalGraphicsRequirementsKHR = nullptr;
     PFN_xrSetInputDeviceActiveEXT setInputDeviceActiveEXT = nullptr;
@@ -1238,6 +1265,7 @@ TEST_CASE("Conformance automation drives Khronos simple controller actions", "[r
     XrActionsSyncInfo syncInfo = {XR_TYPE_ACTIONS_SYNC_INFO};
     syncInfo.countActiveActionSets = 1;
     syncInfo.activeActionSets = &activeActionSet;
+    context.Focus();
     XR_CHECK(xrSyncActions(context.session, &syncInfo));
 
     XrInteractionProfileState interactionProfileState = {XR_TYPE_INTERACTION_PROFILE_STATE};
@@ -1785,6 +1813,7 @@ TEST_CASE("Quest Touch profile reports float and vector inputs", "[runtime][acti
     XrActionsSyncInfo syncInfo = {XR_TYPE_ACTIONS_SYNC_INFO};
     syncInfo.countActiveActionSets = 1;
     syncInfo.activeActionSets = &activeActionSet;
+    context.Focus();
     XR_CHECK(xrSyncActions(context.session, &syncInfo));
 
     XrInteractionProfileState interactionProfileState = {XR_TYPE_INTERACTION_PROFILE_STATE};
@@ -1916,6 +1945,7 @@ TEST_CASE("Quest Pico and simple profiles report float inputs through automation
         XR_CHECK(context.setInputDeviceStateFloatEXT(context.session, leftHandPath,
                                                      context.Path(profile.statePath),
                                                      profile.value));
+        context.Focus();
         XR_CHECK(xrSyncActions(context.session, &syncInfo));
 
         XrInteractionProfileState interactionProfileState = {XR_TYPE_INTERACTION_PROFILE_STATE};
@@ -1993,6 +2023,7 @@ TEST_CASE("Touch Plus extension profile is selectable for OpenXR 1.0 apps",
     XrActionsSyncInfo syncInfo = {XR_TYPE_ACTIONS_SYNC_INFO};
     syncInfo.countActiveActionSets = 1;
     syncInfo.activeActionSets = &activeActionSet;
+    context.Focus();
     XR_CHECK(xrSyncActions(context.session, &syncInfo));
 
     XrInteractionProfileState interactionProfileState = {XR_TYPE_INTERACTION_PROFILE_STATE};
@@ -2068,6 +2099,7 @@ TEST_CASE("Touch Plus promoted profile is selectable for OpenXR 1.1 apps",
     XrActionsSyncInfo syncInfo = {XR_TYPE_ACTIONS_SYNC_INFO};
     syncInfo.countActiveActionSets = 1;
     syncInfo.activeActionSets = &activeActionSet;
+    context.Focus();
     XR_CHECK(xrSyncActions(context.session, &syncInfo));
 
     XrInteractionProfileState interactionProfileState = {XR_TYPE_INTERACTION_PROFILE_STATE};
@@ -2136,6 +2168,7 @@ TEST_CASE("Inactive action spaces clear location flags", "[runtime][actions]")
     XrActionsSyncInfo syncInfo = {XR_TYPE_ACTIONS_SYNC_INFO};
     syncInfo.countActiveActionSets = 1;
     syncInfo.activeActionSets = &activeActionSet;
+    context.Focus();
     XR_CHECK(xrSyncActions(context.session, &syncInfo));
 
     XrActionStateGetInfo poseGetInfo = {XR_TYPE_ACTION_STATE_GET_INFO};
@@ -2230,6 +2263,7 @@ TEST_CASE("Hand interaction pose and value inputs work through automation", "[ru
     XrActionsSyncInfo syncInfo = {XR_TYPE_ACTIONS_SYNC_INFO};
     syncInfo.countActiveActionSets = 1;
     syncInfo.activeActionSets = &activeActionSet;
+    context.Focus();
     XR_CHECK(xrSyncActions(context.session, &syncInfo));
 
     XrActionStateGetInfo poseGetInfo = {XR_TYPE_ACTION_STATE_GET_INFO};
