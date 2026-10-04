@@ -822,7 +822,7 @@ oxr::protocol::ServerAnnounce StreamingServer::BuildServerAnnounce(
     const StreamLayoutState layoutState = GetStreamLayoutState();
     announce.type = oxr::protocol::MessageType::ServerAnnounce;
     announce.versionMajor = 1;
-    announce.versionMinor = 2;
+    announce.versionMinor = 3;
     announce.videoPort = oxr::protocol::VIDEO_PORT;
     announce.trackingPort = oxr::protocol::TRACKING_PORT;
     announce.renderWidth = renderWidth_ * 2;
@@ -831,6 +831,11 @@ oxr::protocol::ServerAnnounce StreamingServer::BuildServerAnnounce(
     announce.encodedWidth = layoutState.encodedWidth;
     announce.encodedHeight = layoutState.encodedHeight;
     strncpy(announce.serverName, "OXRSys Runtime", sizeof(announce.serverName) - 1);
+    if (renderEyesFixed_)
+    {
+        for (int i = 0; i < 4; ++i)
+            announce.renderEyeTangents[i] = renderEyeTangents_[i];
+    }
 
     const ConfigValues config = Config::Get().GetValues();
     const oxr::protocol::FoveationPreset foveationPreset =
