@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <string>
 #include <openxr/openxr.h>
 #include <cstdint>
 
@@ -58,6 +59,10 @@ public:
     {
         return action_;
     }
+
+    // The pose source the action last resolved to, kept so the space outlives its action.
+    std::string lastPoseBindingPath;
+    std::string lastPoseProfilePath;
 
     XrResult LocateSpace(Space* baseSpace, XrTime time, XrSpaceLocation* location);
 

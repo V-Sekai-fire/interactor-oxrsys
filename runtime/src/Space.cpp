@@ -143,8 +143,21 @@ static LocatedWorldPose GetWorldPose(Space* space, const InputManager& inputMana
                 poseBindingPath = Runtime::Get().GetPathString(fallbackData.poseSourcePath);
                 poseProfilePath = fallbackData.poseSourceProfile;
             }
+            space->lastPoseBindingPath = poseActive ? poseBindingPath : std::string();
+            space->lastPoseProfilePath = poseActive ? poseProfilePath : std::string();
+        }
+        else if (!space->lastPoseBindingPath.empty())
+        {
+            poseActive = true;
+            poseBindingPath = space->lastPoseBindingPath;
+            poseProfilePath = space->lastPoseProfilePath;
         }
 
+        if (poseActive && !poseBindingPath.empty() &&
+            !inputManager.IsDeviceActiveForProfile(HandFromBindingPath(poseBindingPath), poseProfilePath))
+        {
+            poseActive = false;
+        }
         result.active = poseActive;
         if (poseActive && !poseBindingPath.empty())
         {
