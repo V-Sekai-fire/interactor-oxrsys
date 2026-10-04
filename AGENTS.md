@@ -48,10 +48,8 @@ clients can send `ClientConnect.maxBitrateMbps = 0` to use the server-configured
 adding a client-side cap.
 The Home app can enable a Developer tab from its Settings tab, open the macOS simulator in a
 same-process window backed by the shared `OXRSysSimulator` Swift package, and show live runtime
-streaming statistics from the existing telemetry path. The Qt Home Developer tab opens the shared
-Qt simulator widget in a dedicated window with a GPU PyroWave video preview, mouse-driven
-synthetic head tracking, simulator-owned vertical FOV sent through tracking eye-FOV metadata,
-frame-loss/FEC status, and keyframe recovery requests.
+streaming statistics from the existing telemetry path. The Qt Home Developer tab shows the runtime
+statistics; the Windows and Linux desktop client is XR Pilot (`V-Sekai-fire/interactor-xr-pilot`), which replaced the Qt simulator.
 The macOS package helper builds the runtime dylib and Home app into one local folder with a complete
 `runtime/` directory; the distribution helper signs that package, creates a combined archive, and can
 submit that archive for notarization with Apple Developer account credentials.
@@ -66,7 +64,7 @@ As of March 17, 2026, the pinned non-interactive OpenXR-CTS baseline is fully gr
 - **Always build and verify before declaring success** — run the macOS build + tests and/or Android build as appropriate before saying everything works
 - **Always update `README.md`, `AGENTS.md`, and the relevant files in `docs/` when making significant project changes**
 - Keep SwiftUI Home and Qt Home companion behavior in sync when changing shared Home workflows; only diverge for frontend-specific changes or when the user explicitly asks for a feature to be limited to one frontend.
-- Core C++ dependencies, including PyroWave's C API and its Granite subset, which the Windows and Linux runtimes and the Qt simulator stream with, and PyroWave's Metal port the macOS runtime encodes with, are fetched via CMake FetchContent (the Apple simulator's `CPyroWave` target is a copy of the PyroWave decoder at the same commit, since Swift packages cannot fetch it); Qt, Vulkan SDKs, and platform SDKs are system/toolchain dependencies. Nothing links FFmpeg.
+- Core C++ dependencies, including PyroWave's C API and its Granite subset, which the Windows and Linux runtimes stream with, and PyroWave's Metal port the macOS runtime encodes with, are fetched via CMake FetchContent (the Apple simulator's `CPyroWave` target is a copy of the PyroWave decoder at the same commit, since Swift packages cannot fetch it); Qt, Vulkan SDKs, and platform SDKs are system/toolchain dependencies. Nothing links FFmpeg.
 - Product versions are centralized in `config/OXRSysVersion.xcconfig`; do not hardcode
   marketing versions or build numbers in CMake, Xcode, Gradle, or native client code.
 - Commit messages must read naturally and must not mention Codex or include `[codex]`.

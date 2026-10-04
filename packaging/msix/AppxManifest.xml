@@ -38,9 +38,5 @@
       <uap:VisualElements DisplayName="OXRSys Home" Description="Pick the OpenXR runtime, launch apps, and watch the stream"
         BackgroundColor="transparent" Square150x150Logo="assets\Square150x150Logo.png" Square44x44Logo="assets\Square44x44Logo.png" />
     </Application>
-    <Application Id="Simulator" Executable="simulator\oxrsys-simulator.exe" EntryPoint="Windows.FullTrustApplication">
-      <uap:VisualElements DisplayName="OXRSys Simulator" Description="Desktop headset client for the OXRSys stream"
-        BackgroundColor="transparent" Square150x150Logo="assets\Square150x150Logo.png" Square44x44Logo="assets\Square44x44Logo.png" />
-    </Application>
   </Applications>
 </Package>

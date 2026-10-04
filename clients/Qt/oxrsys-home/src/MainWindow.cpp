@@ -5,7 +5,6 @@
 #include "HomeTray.h"
 
 #include "PlatformSupport.h"
-#include "SimulatorWidget.h"
 
 #include <QAbstractButton>
 #include <QApplication>
@@ -518,7 +517,7 @@ MainWindow::MainWindow(QWidget* parent)
     if (QSystemTrayIcon::isSystemTrayAvailable())
     {
         const QString statusPath = model_->paths().runtimeStatusPath;
-        tray_ = new HomeTray(statusPath, QFileInfo(statusPath).absolutePath(), [this]() { openSimulatorWindow(); },
+        tray_ = new HomeTray(statusPath, QFileInfo(statusPath).absolutePath(),
                              [this]() {
                                  showNormal();
                                  raise();
@@ -1053,24 +1052,6 @@ QWidget* MainWindow::buildDeveloperTab()
     auto* layout = new QVBoxLayout(content);
     layout->setSpacing(14);
 
-    auto* simulatorBox = new QGroupBox("Simulator", content);
-    auto* simulatorLayout = new QHBoxLayout(simulatorBox);
-    auto* simulatorIcon = new QLabel(simulatorBox);
-    simulatorIcon->setPixmap(style()->standardIcon(QStyle::SP_ComputerIcon).pixmap(32, 32));
-    simulatorLayout->addWidget(simulatorIcon);
-    auto* simulatorText = new QVBoxLayout();
-    auto* simulatorTitle = new QLabel("OXRSys Simulator", simulatorBox);
-    simulatorTitle->setStyleSheet("font-weight: 600;");
-    simulatorText->addWidget(simulatorTitle);
-    simulatorText->addWidget(secondaryLabel("Local streaming client"));
-    simulatorLayout->addLayout(simulatorText, 1);
-    auto* openSimulatorButton =
-        iconButton(simulatorBox, QStyle::SP_MediaPlay, "Open Simulator");
-    connect(openSimulatorButton, &QPushButton::clicked,
-            this, &MainWindow::openSimulatorWindow);
-    simulatorLayout->addWidget(openSimulatorButton);
-    layout->addWidget(simulatorBox);
-
     auto* statsBox = new QGroupBox("Runtime Stats", content);
     auto* statsLayout = new QVBoxLayout(statsBox);
     auto* metricsGrid = new QGridLayout();
@@ -1500,26 +1481,6 @@ void MainWindow::chooseCustomAdbExecutable()
     {
         model_->setCustomAdbPath(path);
     }
-}
-
-void MainWindow::openSimulatorWindow()
-{
-    if (!simulatorWindow_.isNull())
-    {
-        simulatorWindow_->show();
-        simulatorWindow_->raise();
-        simulatorWindow_->activateWindow();
-        return;
-    }
-
-    auto* window = new QMainWindow(this);
-    window->setAttribute(Qt::WA_DeleteOnClose);
-    window->setWindowTitle("OXRSys Simulator");
-    auto* simulator = new SimulatorWidget(window);
-    window->setCentralWidget(simulator);
-    window->resize(1280, 720);
-    simulatorWindow_ = window;
-    window->show();
 }
 
 void MainWindow::updateConfigFromControls()

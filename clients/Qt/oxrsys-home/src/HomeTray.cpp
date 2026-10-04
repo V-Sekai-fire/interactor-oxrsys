@@ -282,8 +282,8 @@ bool runElevatedPowerShell(const QString& script)
 
 } // namespace
 
-HomeTray::HomeTray(QString runtimeStatusPath, QString logDirectory, std::function<void()> openSimulator,
-                   std::function<void()> showHome, QObject* parent)
+HomeTray::HomeTray(QString runtimeStatusPath, QString logDirectory, std::function<void()> showHome,
+                   QObject* parent)
     : QObject(parent)
     , runtimeStatusPath_(std::move(runtimeStatusPath))
     , logDirectory_(std::move(logDirectory))
@@ -301,7 +301,6 @@ HomeTray::HomeTray(QString runtimeStatusPath, QString logDirectory, std::functio
     QAction* uninstallAction = menu_->addAction("Uninstall OXRSys...");
     uninstallAction->setVisible(!packageFullName().isEmpty());
     connect(uninstallAction, &QAction::triggered, this, &HomeTray::uninstall);
-    connect(menu_->addAction("Open simulator"), &QAction::triggered, this, [openSimulator]() { openSimulator(); });
     connect(menu_->addAction("Open logs"), &QAction::triggered, this,
             [this]() { revealInFileManager(logDirectory_); });
 
@@ -507,7 +506,7 @@ void HomeTray::uninstall()
     const QString package = packageFullName();
     if (package.isEmpty() ||
         QMessageBox::question(nullptr, "Uninstall OXRSys",
-                              "Unbind OXRSys from OpenXR and SteamVR, then remove OXRSys Home and the simulator?") != QMessageBox::Yes)
+                              "Unbind OXRSys from OpenXR and SteamVR, then remove OXRSys Home?") != QMessageBox::Yes)
     {
         return;
     }

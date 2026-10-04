@@ -10,7 +10,7 @@ OXRSys Runtime is a cross-platform OpenXR runtime in progress. macOS is the matu
 - `common/protocol/include/oxrsys/protocol/`: canonical C++ protocol and FEC wire layout.
 - `clients/Android/android-vr/`: Quest/Pico-oriented Android VR client for decode, display, and tracking return.
 - `clients/Apple/`: Xcode workspace, native SwiftUI Home app, unified Apple simulator/viewer, visionOS viewer, and shared Swift packages.
-- `clients/Qt/`: Qt Home app, Qt simulator app, and reusable Qt simulator widget.
+- `clients/Qt/`: Qt Home app. The Windows and Linux desktop client is XR Pilot (`V-Sekai-fire/interactor-xr-pilot`).
 - `tests/`: unit-style and loader-backed runtime tests.
 - `cmake/`: CMake helpers, including the OpenXR-CTS lane.
 - `docs/`: focused project documentation.
@@ -64,7 +64,7 @@ On Apple, Vulkan images can use `VK_EXT_metal_objects` to bridge Vulkan-backed i
 
 On macOS, the runtime streams only PyroWave, through its Metal port (MIT, fetched with FetchContent; a sibling `pyrowave-upstream` checkout is used in its place when present). The staged BGRA slot is converted to NV12 video range with BT.709 by `VTPixelTransferSession`, encoded with exact rate control at `bitrate_mbps / refresh_rate_hz` bytes per frame, and sent as one NAL unit per frame with `VideoCodec::PyroWave`. Every frame is intra-only, so `ForceKeyframe` changes nothing. `VTPixelTransferSession` is the only VideoToolbox use left in the runtime. The Apple simulator and the visionOS viewer decode the stream in `OXRSysStreaming`'s `PyroWaveDecoder` into NV12 video-range pixel buffers for `StereoRenderer`; Swift packages cannot reach outside their root, so the decoder half of the Metal port is copied into the package's `CPyroWave` target at the commit the runtime fetches. The Qt frontends are not built on Apple platforms, and `-DOXRSYS_BUILD_QT_FRONTENDS=ON` fails configure there.
 
-On Windows and Linux the encoder is PyroWave's Vulkan C API (MIT), fetched with FetchContent with the Granite subset its `checkout_granite.sh` pins and linked statically, its symbols kept out of the Linux runtime's exports. On Windows the eyes are copied side by side into a shared D3D11 texture that PyroWave imports through its KMT handle, with a D3D11 fence imported as the timeline semaphore it waits on; each frame is encoded with exact rate control at `bitrate_mbps / refresh_rate_hz` bytes and sent as one NAL unit with `VideoCodec::PyroWave`. Every frame is intra-only, so `ForceKeyframe` changes nothing. The Qt simulator lends its own Vulkan device to PyroWave, converts the decoded planes with the Lean-authored `kernels/simulator` kernel, and blits the left eye into a swapchain on its preview.
+On Windows and Linux the encoder is PyroWave's Vulkan C API (MIT), fetched with FetchContent with the Granite subset its `checkout_granite.sh` pins and linked statically, its symbols kept out of the Linux runtime's exports. On Windows the eyes are copied side by side into a shared D3D11 texture that PyroWave imports through its KMT handle, with a D3D11 fence imported as the timeline semaphore it waits on; each frame is encoded with exact rate control at `bitrate_mbps / refresh_rate_hz` bytes and sent as one NAL unit with `VideoCodec::PyroWave`. Every frame is intra-only, so `ForceKeyframe` changes nothing. XR Pilot decodes it the same way, with the Lean-authored `kernels/simulator` kernel converting the planes.
 
 ## Input And Actions
 

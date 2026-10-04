@@ -21,8 +21,6 @@ Current responsibilities:
 - show runtime activity and streaming stats from `runtime_status.json`
 - register the selected OpenXR runtime on Linux through `${XDG_CONFIG_HOME:-~/.config}/openxr/1/active_runtime.json`
 - launch apps with the manually selected runtime manifest
-- open the shared Qt simulator widget from the Developer tab in a reusable `1280x720` window,
-  including the GPU PyroWave video preview and mouse-driven synthetic head tracking
 
 Build with the top-level CMake project:
 
@@ -48,9 +46,7 @@ The Streaming tab autosaves TOML edits after a short debounce. `Default` restore
 streaming, general runtime-enabled, and logging keys to their built-in defaults and writes the file
 immediately. `Reveal Runtime Logs` opens the platform state directory that contains
 `oxrsys-runtime.log`, `oxrsys-headset.log`, and `runtime_status.json` when those files exist.
-The bitrate slider uses the shared runtime range, `1` to `200` Mbps. The Qt simulator sends
-`ClientConnect.maxBitrateMbps = 0`, so it does not add a client-side bitrate cap and the runtime
-status `max_bitrate_mbps` follows the server config when the simulator connects.
+The bitrate slider uses the shared runtime range, `1` to `200` Mbps.
 
 The Streaming tab also exposes the shared refresh-rate choices `60`, `72`, `80`, `90`, and `120`
 Hz, encoder presets `speed`, `balanced`, and `quality`, and server-side foveated encoding presets

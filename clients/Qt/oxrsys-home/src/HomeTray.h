@@ -11,15 +11,15 @@ class QAction;
 class QMenu;
 class QSystemTrayIcon;
 
-// The notification-area item: stream status, the default OpenXR runtime picker, the simulator,
-// the logs, and developer items behind a persisted developer-mode toggle.
+// The notification-area item: stream status, the default OpenXR runtime picker, the logs, and
+// developer items behind a persisted developer-mode toggle.
 class HomeTray final : public QObject
 {
     Q_OBJECT
 
 public:
-    HomeTray(QString runtimeStatusPath, QString logDirectory, std::function<void()> openSimulator,
-             std::function<void()> showHome, QObject* parent = nullptr);
+    HomeTray(QString runtimeStatusPath, QString logDirectory, std::function<void()> showHome,
+             QObject* parent = nullptr);
 
     bool isVisible() const;
 

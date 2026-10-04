@@ -10,10 +10,9 @@ The reusable SwiftUI simulator implementation lives in
 `clients/Apple/common/OXRSysSimulator/` and exposes `OXRSysSimulatorView`. The standalone Apple app in
 `clients/Apple/oxrsys-simulator/` is a thin wrapper around that shared view.
 
-The Qt simulator shared code lives in `clients/Qt/oxrsys-simulator-shared` and is reused by:
-
-- `clients/Qt/oxrsys-simulator`: standalone simulator shell
-- `clients/Qt/oxrsys-home`: Developer tab launcher for a dedicated simulator window
+On Windows and Linux the desktop client is XR Pilot (`V-Sekai-fire/interactor-xr-pilot`), which replaced the Qt
+simulator. It decodes the stream on the GPU, takes mouse and keyboard input, and carries an MCP
+server so an agent can drive it; see its README for the controls and tools.
 
 The Apple viewer exposes two viewing modes:
 
@@ -21,10 +20,6 @@ The Apple viewer exposes two viewing modes:
 - `StereoView`: stereo side-by-side presentation for headset-style viewing on iOS
 
 On macOS, the app is primarily used in `Simulator` mode. On iOS, the same target can switch between `Simulator` and `StereoView` from the in-app settings sheet. The macOS Home can also open `OXRSysSimulatorView` from its Developer tab when Developer Mode is enabled.
-
-The Qt simulator is a single `Simulator` mode. It can run as the standalone
-`oxrsys-simulator` app or from the Qt Home Developer tab, which opens or reuses a
-dedicated `1280x720` simulator window.
 
 ## How Simulator Mode Works
 
@@ -36,22 +31,6 @@ The viewer connects to the runtime as a streaming client, using the same UDP pro
 - Receives encoded video frames and decodes them locally
 - Captures keyboard and mouse input and sends simulated tracking data to the runtime
 - Displays a single-eye preview across the full screen
-
-The Qt simulator searches at start and connects to the first runtime it hears;
-`oxrsys-simulator --no-autoconnect` leaves it disconnected until Search is clicked, and
-`--snapshot <file.png>` saves the 90th decoded frame.
-
-The Qt simulator uses the same UDP discovery, video, control, and tracking ports. It decodes the
-PyroWave stream on the GPU and presents the left eye through a Vulkan swapchain on its preview
-surface, with the pose and stream badges drawn over it. The video window is transparent to input,
-so the surface stays the interaction target for click, drag, scroll, keyboard focus, and mouse
-capture. If no decoded frame is available yet, it shows a synthetic pose preview with a
-`Waiting for video` status.
-
-The Qt video path uses an internal UDP frame assembler with duplicate-packet filtering, partial-frame
-timeouts, existing XOR FEC recovery, dropped-frame counters, and keyframe requests after repeated
-loss or decode failures. After a successful decode, the Qt client sends the existing latency report
-with receive-to-submit, decode, compositor `0`, and total client latency fields.
 
 The settings sheet also lets you:
 
@@ -97,37 +76,6 @@ use the streaming protocol.
 The Apple simulator settings sheet exposes `Vertical FOV` in `Simulator` mode.
 The simulator derives the horizontal FOV from the runtime render aspect when a
 server has been discovered, then sends both angles in each tracking packet.
-
-## Qt Simulator Controls
-
-| Input | Action |
-| --- | --- |
-| Left click in the preview | Capture mouse look; the hidden cursor stays centred, so look turns without limit |
-| Right mouse button in the preview | Capture or release mouse look |
-| Mouse move while captured | Head look: mouse down looks down |
-| Mouse wheel | Move forward or backward |
-| `Z Q S D` or `W A S D` | Move head |
-| `Left Shift` + movement | Move left controller |
-| `Right Shift` + movement | Move right controller |
-| `R / E` | Roll head |
-| `Escape` | Release mouse capture |
-
-The controllers present as `/interaction_profiles/oculus/touch_controller`, and every input
-on that profile has a key:
-
-| Input | Touch path |
-| --- | --- |
-| `T / H` | Left or right `trigger` |
-| `F / G` | Left or right `squeeze` |
-| `1 / 2` | Left `x/click` or `y/click` |
-| `3 / 4` | Right `a/click` or `b/click` |
-| `M` | Left `menu/click` |
-| `I J K L` | Left `thumbstick` |
-| Arrow keys | Right `thumbstick` |
-| `C / N` | Left or right `thumbstick/click` |
-
-The Qt simulator window exposes `Vertical FOV` next to the runtime/tracking
-panels. It uses the same `TrackingPacket.eyeFov` path as the Apple simulator.
 
 ## Limitations
 

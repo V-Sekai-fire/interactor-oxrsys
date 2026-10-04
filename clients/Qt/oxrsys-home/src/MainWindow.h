@@ -23,7 +23,6 @@ class QVBoxLayout;
 
 class RuntimeStatsChart;
 class HomeTray;
-class SimulatorWidget;
 
 class MainWindow final : public QMainWindow
 {
@@ -57,7 +56,6 @@ private:
     void chooseLauncherApp();
     void chooseRuntimeManifest();
     void chooseCustomAdbExecutable();
-    void openSimulatorWindow();
     void updateConfigFromControls();
     void showRuntimeSetupGuidanceIfNeeded();
 
@@ -141,6 +139,5 @@ private:
     QLabel* runtimeStatsEmptyLabel_ = nullptr;
     RuntimeStatsChart* pipelineChart_ = nullptr;
     RuntimeStatsChart* encodeChart_ = nullptr;
-    QPointer<QMainWindow> simulatorWindow_;
     bool runtimeSetupGuidancePresented_ = false;
 };

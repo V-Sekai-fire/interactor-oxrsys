@@ -17,13 +17,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network)
 
     set(OXRSYS_PROTOCOL_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../common/protocol/include")
-
-    if(NOT TARGET oxrsys-simulator-shared)
-        add_subdirectory(
-            "${CMAKE_CURRENT_LIST_DIR}/../oxrsys-simulator-shared"
-            "${CMAKE_CURRENT_BINARY_DIR}/oxrsys-simulator-shared"
-        )
-    endif()
 endif()
 
 set(OXRSYS_HOME_CORE_SOURCES
@@ -58,7 +51,6 @@ set_target_properties(oxrsys-home PROPERTIES WIN32_EXECUTABLE TRUE)
 target_link_libraries(oxrsys-home PRIVATE
     Qt6::Widgets
     Qt6::Network
-    oxrsys-simulator-shared
 )
 
 add_executable(oxrsys-home-tests

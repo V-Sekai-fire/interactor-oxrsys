@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MPL-2.0
 #
-# Build the Windows runtime and the Qt simulator with MSVC, taking CMake, Ninja and
-# Qt 6 from the pixi environment in pixi.toml. Video is PyroWave in the runtime and the
-# simulator, linked statically into both; no FFmpeg.
+# Build the Windows runtime, driver and Qt Home with MSVC, taking CMake, Ninja and Qt 6
+# from the pixi environment in pixi.toml. Video is PyroWave, linked statically into the
+# runtime; no FFmpeg.
 # -Register makes the installed runtime the machine's active OpenXR runtime; without it, point
 # XR_RUNTIME_JSON at build/windows/runtime/oxrsys-runtime.json per process.
 param(
@@ -40,7 +40,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "configure failed" }
     pixi run cmake --build $build
     if ($LASTEXITCODE -ne 0) { throw "build failed" }
-    # Deploy the Qt frontends: windeployqt, then any other pixi-env DLL they pull in.
+    # Deploy Qt Home: windeployqt, then any other pixi-env DLL they pull in.
     # The runtime DLL needs nothing beside it (PyroWave is linked in).
     $envBin = (pixi run cmd /c "echo %CONDA_PREFIX%" | Select-Object -Last 1).Trim() + '\Library\bin'
     $dumpbin = Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
@@ -65,7 +65,7 @@ try {
             }
         }
     }
-    foreach ($exe in @('clients\Qt\oxrsys-simulator\oxrsys-simulator.exe', 'clients\Qt\oxrsys-home\oxrsys-home.exe')) {
+    foreach ($exe in @('clients\Qt\oxrsys-home\oxrsys-home.exe')) {
         $path = Join-Path $build $exe
         pixi run windeployqt6 --qtpaths (Join-Path $envBin 'qtpaths6.exe') --no-translations --no-system-d3d-compiler --no-opengl-sw $path | Out-Null
         Copy-Dependencies $path
