@@ -79,7 +79,8 @@ std::string DetectStreamingControllerProfile(const std::string& clientName)
         return kOculusTouchProfile;
     }
 
-    return kOculusTouchProfile;
+    // A client that names no headset, such as a desktop one, holds the current handheld controllers.
+    return kTouchPlusPromotedProfile;
 }
 
 void AddProfileIfMissing(std::vector<std::string>& profiles, const std::string& profile)

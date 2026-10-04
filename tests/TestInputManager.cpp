@@ -281,7 +281,8 @@ TEST_CASE("InputManager — streaming client names map to controller profiles an
         {"Meta Quest 2", "/interaction_profiles/meta/touch_controller_quest_2"},
         {"Meta Quest 3", "/interaction_profiles/meta/touch_plus_controller"},
         {"Quest 3", "/interaction_profiles/meta/touch_plus_controller"},
-        {"Unknown headset", "/interaction_profiles/oculus/touch_controller"},
+        {"Unknown headset", "/interaction_profiles/meta/touch_plus_controller"},
+        {"OXRSys XR Pilot", "/interaction_profiles/meta/touch_plus_controller"},
         {"PICO Neo3", "/interaction_profiles/bytedance/pico_neo3_controller"},
         {"PICO 4", "/interaction_profiles/bytedance/pico4_controller"},
     };
