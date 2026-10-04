@@ -2395,8 +2395,16 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrSyncActions(
 
     const InputManager& inputManager = sess->GetInputManager();
     std::unordered_map<uint64_t, std::unordered_map<uint64_t, AggregatedActionState>> aggregatedStates;
+    // Input reaches only a focused session; elsewhere every action syncs inactive.
+    const bool focused = sess->GetState() == XR_SESSION_STATE_FOCUSED;
 
-    for (InputManager::Hand hand : {InputManager::Hand::Left, InputManager::Hand::Right})
+    std::vector<InputManager::Hand> hands;
+    if (focused)
+    {
+        hands = {InputManager::Hand::Left, InputManager::Hand::Right};
+    }
+
+    for (InputManager::Hand hand : hands)
     {
         XrPath expectedTopLevelPath = TopLevelPathFromHand(hand);
         for (const std::string& profilePathString : inputManager.GetActiveInteractionProfiles(hand))
@@ -2459,7 +2467,7 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrSyncActions(
         }
     }
 
-    return XR_SUCCESS;
+    return focused ? XR_SUCCESS : XR_SESSION_NOT_FOCUSED;
 }
 
 static XRAPI_ATTR XrResult XRAPI_CALL OxrGetActionStateBoolean(
