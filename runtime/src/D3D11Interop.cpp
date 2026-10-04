@@ -469,22 +469,24 @@ struct Interop : SubmissionDevice
 };
 
 std::mutex gInteropMutex;
-std::shared_ptr<Interop> gInterop;
+// Weak, like gD3D11Interop: the swapchains own it, so it never outlives the app's VkDevice.
+std::weak_ptr<Interop> gInterop;
 
 std::shared_ptr<Interop> GetInterop(const VulkanGraphicsContext& ctx)
 {
     std::scoped_lock lock(gInteropMutex);
-    if (gInterop && gInterop->device == static_cast<VkDevice>(ctx.device))
+    std::shared_ptr<Interop> current = gInterop.lock();
+    if (current && current->device == static_cast<VkDevice>(ctx.device))
     {
-        return gInterop;
+        return current;
     }
-    auto interop = std::make_shared<Interop>();
+    std::shared_ptr<Interop> interop = std::make_shared<Interop>();
     if (!interop->Initialize(ctx))
     {
         return nullptr;
     }
     gInterop = interop;
-    return gInterop;
+    return interop;
 }
 
 // One per D3D11 session: the submission device on the app's adapter, with the app's device,
@@ -1134,9 +1136,6 @@ std::vector<int64_t> Win32SupportedD3D11Formats()
         formats.push_back(DXGI_FORMAT_D24_UNORM_S8_UINT);
     }
     formats.push_back(DXGI_FORMAT_D16_UNORM);
-    formats.push_back(DXGI_FORMAT_R8G8B8A8_TYPELESS);
-    formats.push_back(DXGI_FORMAT_B8G8R8A8_TYPELESS);
-    formats.push_back(DXGI_FORMAT_R16G16B16A16_TYPELESS);
     return formats;
 }
 

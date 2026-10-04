@@ -9,6 +9,7 @@ ActionSetState::ActionSetState(const XrActionSetCreateInfo* createInfo)
 {
     name_ = createInfo->actionSetName;
     localizedName_ = createInfo->localizedActionSetName;
+    priority_ = createInfo->priority;
     Runtime::Get().RegisterHandle(handle_, this);
 }
 
@@ -98,7 +99,13 @@ void ActionState::ApplySyncState(XrPath subactionPath, const AggregatedActionSta
     bool poseChanged = (data.poseActive != oldPoseActive) ||
                        (data.poseSourcePath != oldPoseSourcePath) ||
                        (data.poseSourceProfile != oldPoseSourceProfile);
-    if (data.boolChanged || data.floatChanged || data.vector2fChanged || poseChanged)
+    if (!data.isActive)
+    {
+        // An inactive action reports no change and a zero change time.
+        data.boolChanged = data.floatChanged = data.vector2fChanged = false;
+        data.lastChangeTime = 0;
+    }
+    else if (data.boolChanged || data.floatChanged || data.vector2fChanged || poseChanged)
     {
         data.lastChangeTime = syncTime;
     }

@@ -42,10 +42,16 @@ public:
         return localizedName_;
     }
 
+    uint32_t GetPriority() const
+    {
+        return priority_;
+    }
+
 private:
     uint64_t handle_ = 0;
     std::string name_;
     std::string localizedName_;
+    uint32_t priority_ = 0;
 };
 
 class ActionState
