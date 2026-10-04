@@ -469,22 +469,24 @@ struct Interop : SubmissionDevice
 };
 
 std::mutex gInteropMutex;
-std::shared_ptr<Interop> gInterop;
+// Weak, like gD3D11Interop: the swapchains own it, so it never outlives the app's VkDevice.
+std::weak_ptr<Interop> gInterop;
 
 std::shared_ptr<Interop> GetInterop(const VulkanGraphicsContext& ctx)
 {
     std::scoped_lock lock(gInteropMutex);
-    if (gInterop && gInterop->device == static_cast<VkDevice>(ctx.device))
+    std::shared_ptr<Interop> current = gInterop.lock();
+    if (current && current->device == static_cast<VkDevice>(ctx.device))
     {
-        return gInterop;
+        return current;
     }
-    auto interop = std::make_shared<Interop>();
+    std::shared_ptr<Interop> interop = std::make_shared<Interop>();
     if (!interop->Initialize(ctx))
     {
         return nullptr;
     }
     gInterop = interop;
-    return gInterop;
+    return interop;
 }
 
 // One per D3D11 session: the submission device on the app's adapter, with the app's device,
