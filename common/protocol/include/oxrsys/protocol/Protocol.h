@@ -196,6 +196,10 @@ struct ServerAnnounce
     // Protocol v1.2 trailing fields.
     uint32_t spatialPort = SPATIAL_PORT;
     uint32_t reserved2 = 0;
+
+    // Protocol v1.3 trailing fields: the left eye's field of view the server renders, as tangents
+    // left, right, up, down (the right eye mirrors it); all zero when it renders the client's eyeFov.
+    float renderEyeTangents[4] = {};
 };
 
 struct ClientConnect
