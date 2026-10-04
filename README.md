@@ -17,6 +17,10 @@ The Android VR client can be used over WiFi or USB. The USB path is the best way
 OXRSys Home exists as a native Apple app and a Qt app. The Apple app owns the macOS direct-distribution workflow. The Qt app is Linux-first and also builds on Windows; on macOS the Apple app takes its place, since the Qt simulator decodes PyroWave through its Vulkan C API, which Apple builds do not compile.
 The macOS package helper builds the runtime and Home app into one local folder; the distribution helper signs that package and can submit the archive for notarization.
 
+### Agents
+
+[XR Pilot](https://github.com/V-Sekai-fire/interactor-xr-pilot) lets an AI agent see and drive an OpenXR app running on OXRSys over MCP, connecting as a headset client does.
+
 ## Disclaimer
 
 **Current Status**: This project is in early development and is not yet production-ready.
