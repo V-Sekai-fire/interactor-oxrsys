@@ -427,6 +427,10 @@ ConfigValues ParseConfigToml(std::istream& input, const ConfigValues& defaults)
             {
                 values.passthroughEnabled = ParseBool(value);
             }
+            else if (key == "body_hologram")
+            {
+                values.bodyHologram = ParseBool(value);
+            }
             else if (key == "mixed_reality_mode")
             {
                 value = ParseString(value);

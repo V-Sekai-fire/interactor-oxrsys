@@ -1340,6 +1340,7 @@ void StreamingServer::EncodeThread()
         }
 
         const uint32_t submittedFrameIndex = frame.frameIndex;
+        encoder->SetBodyOverlay(frame.overlay);
         bool encoded = encoder->EncodeStereo(
             std::move(frame.source),
             frame.timestampNs,
@@ -2386,6 +2387,14 @@ void StreamingServer::UpdatePredictionHorizon()
     trackingReceiver_->SetPredictionHorizonMs(horizonMs);
 }
 
+void StreamingServer::SetRenderEyes(const float tangents[4], float ipd)
+{
+    for (int i = 0; i < 4; ++i)
+        renderEyeTangents_[i] = tangents[i];
+    renderIpd_ = ipd;
+    renderEyesFixed_ = true;
+}
+
 void StreamingServer::SendFrame(FrameSource frameSource,
                                 const float* renderHeadOrientation,
                                 const float* renderHeadPosition)
@@ -2431,6 +2440,34 @@ void StreamingServer::SendFrame(FrameSource frameSource,
             memcpy(frame.headOrientation, pose.headOrientation, sizeof(float) * 4);
             frame.hasPose = true;
         }
+    }
+
+    // The body hologram follows the pose the frame was rendered for; the physical floor is y = 0.
+    oxr::protocol::TrackingPacket latest = {};
+    if (Config::Get().GetValues().bodyHologram && frame.hasPose && trackingReceiver_ != nullptr &&
+        trackingReceiver_->GetLatestPose(latest))
+    {
+        BodyOverlay& overlay = frame.overlay;
+        overlay.enabled = true;
+        memcpy(overlay.headPosition, frame.headPosition, sizeof(float) * 3);
+        memcpy(overlay.headOrientation, frame.headOrientation, sizeof(float) * 4);
+        overlay.floorY = 0.0f;
+        if (renderEyesFixed_)
+        {
+            memcpy(overlay.eyeTangents, renderEyeTangents_, sizeof(float) * 4);
+            overlay.ipd = renderIpd_;
+        }
+        else
+        {
+            if (latest.eyeFov[1] > latest.eyeFov[0] && latest.eyeFov[2] > latest.eyeFov[3])
+                SetEyeTangentsFromAngles(overlay, latest.eyeFov);
+            if (latest.ipd > 0.0f)
+                overlay.ipd = latest.ipd;
+        }
+        overlay.handActive[0] = (latest.trackingFlags & oxr::protocol::TRACKING_FLAG_LEFT_CONTROLLER_ACTIVE) != 0;
+        overlay.handActive[1] = (latest.trackingFlags & oxr::protocol::TRACKING_FLAG_RIGHT_CONTROLLER_ACTIVE) != 0;
+        memcpy(overlay.handPosition[0], latest.leftControllerPos, sizeof(float) * 3);
+        memcpy(overlay.handPosition[1], latest.rightControllerPos, sizeof(float) * 3);
     }
 
     if (frameQueue_.PushLatest(std::move(frame)))

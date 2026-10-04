@@ -13,6 +13,7 @@
 #endif
 #include <windows.h>
 #include <d3d11_4.h>
+#include <d3dcompiler.h>
 #include <dxgi1_2.h>
 #include <wrl/client.h>
 
@@ -23,6 +24,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 
 using Microsoft::WRL::ComPtr;
 
@@ -38,6 +40,116 @@ double ToMilliseconds(Clock::duration duration)
 
 constexpr size_t PacketBoundary = 64 * 1024;
 
+const char HologramShader[] = R"(
+struct VertexIn { float2 position : POSITION; float4 colour : COLOR; };
+struct PixelIn { float4 position : SV_Position; float4 colour : COLOR; };
+PixelIn vs(VertexIn v) { PixelIn o; o.position = float4(v.position, 0, 1); o.colour = v.colour; return o; }
+float4 ps(PixelIn p) : SV_Target { return p.colour; }
+)";
+
+// Draws the body hologram's triangles over the packed eyes, alpha-blended, on the encoder's context.
+struct HologramRenderer
+{
+    ComPtr<ID3D11VertexShader> vertexShader;
+    ComPtr<ID3D11PixelShader> pixelShader;
+    ComPtr<ID3D11InputLayout> layout;
+    ComPtr<ID3D11BlendState> blend;
+    ComPtr<ID3D11RasterizerState> raster;
+    ComPtr<ID3D11Buffer> vertices;
+    UINT capacity = 0;
+    bool failed = false;
+
+    bool Ensure(ID3D11Device* device)
+    {
+        if (vertexShader || failed)
+            return !failed;
+        ComPtr<ID3DBlob> vsCode;
+        ComPtr<ID3DBlob> psCode;
+        ComPtr<ID3DBlob> errors;
+        failed = true;
+        if (FAILED(D3DCompile(HologramShader, sizeof(HologramShader) - 1, "hologram", nullptr, nullptr, "vs", "vs_5_0", 0,
+                              0, &vsCode, &errors)) ||
+            FAILED(D3DCompile(HologramShader, sizeof(HologramShader) - 1, "hologram", nullptr, nullptr, "ps", "ps_5_0", 0,
+                              0, &psCode, &errors)))
+        {
+            spdlog::error("PyroWave: the body hologram shaders did not compile");
+            return false;
+        }
+        const D3D11_INPUT_ELEMENT_DESC elements[] = {
+            {"POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+            {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0},
+        };
+        D3D11_BLEND_DESC blendDesc = {};
+        blendDesc.RenderTarget[0].BlendEnable = TRUE;
+        blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+        blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+        blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+        blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
+        blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+        blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+        D3D11_RASTERIZER_DESC rasterDesc = {};
+        rasterDesc.FillMode = D3D11_FILL_SOLID;
+        rasterDesc.CullMode = D3D11_CULL_NONE;
+        rasterDesc.DepthClipEnable = TRUE;
+        if (FAILED(device->CreateVertexShader(vsCode->GetBufferPointer(), vsCode->GetBufferSize(), nullptr, &vertexShader)) ||
+            FAILED(device->CreatePixelShader(psCode->GetBufferPointer(), psCode->GetBufferSize(), nullptr, &pixelShader)) ||
+            FAILED(device->CreateInputLayout(elements, 2, vsCode->GetBufferPointer(), vsCode->GetBufferSize(), &layout)) ||
+            FAILED(device->CreateBlendState(&blendDesc, &blend)) || FAILED(device->CreateRasterizerState(&rasterDesc, &raster)))
+        {
+            spdlog::error("PyroWave: the body hologram pipeline could not be created");
+            return false;
+        }
+        failed = false;
+        return true;
+    }
+
+    void Draw(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11RenderTargetView* target, UINT width, UINT height,
+              const std::vector<HologramVertex>& triangles)
+    {
+        if (triangles.empty() || target == nullptr || !Ensure(device))
+            return;
+        const UINT bytes = UINT(triangles.size() * sizeof(HologramVertex));
+        if (bytes > capacity)
+        {
+            D3D11_BUFFER_DESC desc = {};
+            desc.ByteWidth = std::max<UINT>(bytes, 64 * 1024);
+            desc.Usage = D3D11_USAGE_DYNAMIC;
+            desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+            desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+            vertices.Reset();
+            if (FAILED(device->CreateBuffer(&desc, nullptr, &vertices)))
+            {
+                capacity = 0;
+                return;
+            }
+            capacity = desc.ByteWidth;
+        }
+        D3D11_MAPPED_SUBRESOURCE mapped = {};
+        if (FAILED(context->Map(vertices.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+            return;
+        std::memcpy(mapped.pData, triangles.data(), bytes);
+        context->Unmap(vertices.Get(), 0);
+
+        const D3D11_VIEWPORT viewport = {0.0f, 0.0f, float(width), float(height), 0.0f, 1.0f};
+        const UINT stride = sizeof(HologramVertex);
+        const UINT offset = 0;
+        const float factor[4] = {};
+        context->OMSetRenderTargets(1, &target, nullptr);
+        context->OMSetBlendState(blend.Get(), factor, 0xffffffff);
+        context->RSSetState(raster.Get());
+        context->RSSetViewports(1, &viewport);
+        context->IASetInputLayout(layout.Get());
+        context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        context->IASetVertexBuffers(0, 1, vertices.GetAddressOf(), &stride, &offset);
+        context->VSSetShader(vertexShader.Get(), nullptr, 0);
+        context->PSSetShader(pixelShader.Get(), nullptr, 0);
+        context->Draw(UINT(triangles.size()), 0);
+        ID3D11RenderTargetView* none = nullptr;
+        context->OMSetRenderTargets(1, &none, nullptr);
+    }
+};
+
 struct Win32PyroWaveState
 {
     ComPtr<ID3D11Device5> device;
@@ -46,6 +158,8 @@ struct Win32PyroWaveState
     uint64_t fenceValue = 0;
 
     ComPtr<ID3D11Texture2D> packed; // both eyes side by side, shared with PyroWave
+    ComPtr<ID3D11RenderTargetView> packedTarget; // where the body hologram is drawn
+    HologramRenderer hologram;
     DXGI_FORMAT packedFormat = DXGI_FORMAT_UNKNOWN;
     uint32_t packedWidth = 0;
     uint32_t packedHeight = 0;
@@ -82,6 +196,7 @@ struct Win32PyroWaveState
             image = nullptr;
         }
         packed.Reset();
+        packedTarget.Reset();
 
         VkFormat vkFormat = format == DXGI_FORMAT_B8G8R8A8_UNORM ? VK_FORMAT_B8G8R8A8_UNORM
                             : format == DXGI_FORMAT_R8G8B8A8_UNORM ? VK_FORMAT_R8G8B8A8_UNORM
@@ -97,13 +212,15 @@ struct Win32PyroWaveState
         desc.Format = format;
         desc.SampleDesc.Count = 1;
         desc.Usage = D3D11_USAGE_DEFAULT;
-        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
         desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
         if (FAILED(device->CreateTexture2D(&desc, nullptr, &packed)))
         {
             spdlog::error("PyroWave: packed eye texture creation failed");
             return false;
         }
+        if (FAILED(device->CreateRenderTargetView(packed.Get(), nullptr, &packedTarget)))
+            spdlog::warn("PyroWave: no render target on the packed eyes; the body hologram stays off");
         ComPtr<IDXGIResource> resource;
         HANDLE handle = nullptr;
         if (FAILED(packed.As(&resource)) || FAILED(resource->GetSharedHandle(&handle)) || handle == nullptr)
@@ -332,6 +449,11 @@ bool VideoEncoder::EncodeInternal(FrameSource frameSource, bool stereo, int64_t 
     if (stereo)
     {
         state->context->CopySubresourceRegion(state->packed.Get(), 0, left->width, 0, 0, right->texture, 0, nullptr);
+    }
+    if (bodyOverlay_.enabled)
+    {
+        state->hologram.Draw(state->device.Get(), state->context.Get(), state->packedTarget.Get(), packedWidth,
+                             left->height, BuildBodyHologram(bodyOverlay_, left->width, left->height, stereo));
     }
     const uint64_t value = ++state->fenceValue;
     state->context->Signal(state->fence.Get(), value);

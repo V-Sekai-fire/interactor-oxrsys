@@ -15,6 +15,7 @@ set(OXRSYS_RUNTIME_SOURCES
     src/InputManager.cpp
     src/HandTracker.cpp
     src/StreamingServer.cpp
+    src/BodyOverlay.cpp
     src/TrackingReceiver.cpp
     src/VulkanDispatch.cpp
 )
@@ -90,7 +91,7 @@ if(WIN32)
     if(MSVC)
         target_compile_options(oxrsys_runtime PRIVATE /utf-8)
     endif()
-    list(APPEND OXRSYS_RUNTIME_LINK_LIBRARIES ws2_32 d3d11 dxgi)
+    list(APPEND OXRSYS_RUNTIME_LINK_LIBRARIES ws2_32 d3d11 dxgi d3dcompiler)
 endif()
 
 # NOTE: We intentionally do NOT link against Vulkan::Vulkan.

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "BodyOverlay.h"
 #include "GraphicsTypes.h"
 
 #include <atomic>
@@ -21,6 +22,7 @@ struct StreamingFrame
     float headPosition[3] = {};
     float headOrientation[4] = {0, 0, 0, 1};
     bool hasPose = false;
+    BodyOverlay overlay;
 };
 
 class StreamingFrameQueue
