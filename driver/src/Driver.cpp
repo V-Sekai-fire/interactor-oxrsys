@@ -6,6 +6,8 @@
 
 #include "openvr_driver_min.h"
 
+#include "Config.h"
+#include "ControllerLayout.h"
 #include "D3D11Interop.h"
 #include "GraphicsTypes.h"
 #include "StreamingServer.h"
@@ -633,6 +635,7 @@ class Controller final : public ITrackedDeviceServerDriver
 public:
     explicit Controller(bool left)
         : left_(left)
+        , layout_(LayoutForControllers(Config::Get().GetValues().controllers))
     {
     }
 
@@ -644,24 +647,27 @@ public:
         WriteString(c, Prop_ModelNumber_String, "OXRSys Controller");
         WriteString(c, Prop_SerialNumber_String, left_ ? "OXRSYS-LEFT-0" : "OXRSYS-RIGHT-0");
         WriteString(c, Prop_ManufacturerName_String, "OXRSys");
-        // SteamVR's bundled touch profile, so apps use their own bindings for the common handheld type.
-        WriteString(c, Prop_ControllerType_String, "oculus_touch");
+        // A profile SteamVR ships, so apps use their own bindings for that controller.
+        WriteString(c, Prop_ControllerType_String, layout_.controllerType);
         // Hidden until physical tracker support lands; oxrsys_controller is the model to restore.
         WriteString(c, Prop_RenderModelName_String, "{oxrsys}oxrsys_hidden");
-        WriteString(c, Prop_InputProfilePath_String, "{oculus}/input/touch_profile.json");
+        WriteString(c, Prop_InputProfilePath_String, layout_.inputProfilePath);
         WriteProperty(c, Prop_ControllerRoleHint_Int32,
                       static_cast<int32_t>(left_ ? TrackedControllerRole_LeftHand : TrackedControllerRole_RightHand),
                       k_unInt32PropertyTag);
         if (gInput != nullptr)
         {
-            const std::array<const char*, kBooleans.size()>& booleans = left_ ? kLeftBooleans : kBooleans;
-            for (size_t i = 0; i < booleans.size(); ++i)
-                gInput->CreateBooleanComponent(c, booleans[i], &booleans_[i]);
-            if (left_)
-                gInput->CreateBooleanComponent(c, "/input/system/click", &menu_);
-            for (size_t i = 0; i < kScalars.size(); ++i)
-                gInput->CreateScalarComponent(c, kScalars[i], &scalars_[i], VRScalarType_Absolute,
-                                              i >= 2 ? VRScalarUnits_NormalizedTwoSided : VRScalarUnits_NormalizedOneSided);
+            const std::vector<ControllerInput>& inputs = left_ ? layout_.left : layout_.right;
+            handles_.assign(inputs.size(), 0);
+            for (size_t i = 0; i < inputs.size(); ++i)
+            {
+                if (inputs[i].scalar)
+                    gInput->CreateScalarComponent(c, inputs[i].path.c_str(), &handles_[i], VRScalarType_Absolute,
+                                                  inputs[i].twoSided ? VRScalarUnits_NormalizedTwoSided
+                                                                     : VRScalarUnits_NormalizedOneSided);
+                else
+                    gInput->CreateBooleanComponent(c, inputs[i].path.c_str(), &handles_[i]);
+            }
         }
         return VRInitError_None;
     }
@@ -701,41 +707,25 @@ public:
         gHost->TrackedDevicePoseUpdated(id_, pose_, sizeof(pose_));
         if (gInput != nullptr)
         {
-            using namespace oxr::protocol;
-            const uint32_t b = packet.buttonState;
-            const float* stick = left_ ? packet.leftThumbstick : packet.rightThumbstick;
-            const bool stickClick = (b & (left_ ? BUTTON_LEFT_THUMBSTICK : BUTTON_RIGHT_THUMBSTICK)) != 0;
-            const bool stickTouch = stickClick || stick[0] != 0.0f || stick[1] != 0.0f;
-            const bool lower = (b & (left_ ? BUTTON_X : BUTTON_A)) != 0;
-            const bool upper = (b & (left_ ? BUTTON_Y : BUTTON_B)) != 0;
-            const bool values[] = {trigger > 0.0f, grip > 0.0f, stickClick, stickTouch, lower, lower, upper, upper};
-            for (size_t i = 0; i < kBooleans.size(); ++i)
-                gInput->UpdateBooleanComponent(booleans_[i], values[i], 0.0);
-            if (left_)
-                gInput->UpdateBooleanComponent(menu_, (b & BUTTON_MENU) != 0, 0.0);
-            const float scalars[] = {trigger, grip, stick[0], stick[1]};
-            for (size_t i = 0; i < kScalars.size(); ++i)
-                gInput->UpdateScalarComponent(scalars_[i], scalars[i], 0.0);
+            const std::vector<ControllerInput>& inputs = left_ ? layout_.left : layout_.right;
+            for (size_t i = 0; i < inputs.size() && i < handles_.size(); ++i)
+            {
+                const float value = ControllerSourceValue(inputs[i].source, packet, left_);
+                if (inputs[i].scalar)
+                    gInput->UpdateScalarComponent(handles_[i], value, 0.0);
+                else
+                    gInput->UpdateBooleanComponent(handles_[i], value != 0.0f, 0.0);
+            }
         }
     }
 
 private:
     static constexpr uint32_t kInvalidId = 0xFFFFFFFFu;
-    // The touch profile's inputs; the left hand has x, y and the menu where the right has a and b.
-    static constexpr std::array<const char*, 8> kBooleans = {
-        "/input/trigger/touch", "/input/grip/touch", "/input/joystick/click", "/input/joystick/touch",
-        "/input/a/click", "/input/a/touch", "/input/b/click", "/input/b/touch"};
-    static constexpr std::array<const char*, 8> kLeftBooleans = {
-        "/input/trigger/touch", "/input/grip/touch", "/input/joystick/click", "/input/joystick/touch",
-        "/input/x/click", "/input/x/touch", "/input/y/click", "/input/y/touch"};
-    static constexpr std::array<const char*, 4> kScalars = {
-        "/input/trigger/value", "/input/grip/value", "/input/joystick/x", "/input/joystick/y"};
     bool left_;
+    const ControllerLayout& layout_;
     uint32_t id_ = kInvalidId;
     DriverPose_t pose_ = {};
-    std::array<VRInputComponentHandle_t, kBooleans.size()> booleans_ = {};
-    std::array<VRInputComponentHandle_t, kScalars.size()> scalars_ = {};
-    VRInputComponentHandle_t menu_ = 0;
+    std::vector<VRInputComponentHandle_t> handles_;
 };
 
 class Hmd final : public ITrackedDeviceServerDriver

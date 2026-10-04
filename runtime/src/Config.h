@@ -29,6 +29,7 @@ struct ConfigValues
     std::string abrMode = "bitrate"; // "off", "bitrate", "full"
     bool passthroughEnabled = false;  // Allow app-requested alpha blend passthrough
     bool bodyHologram = false;        // Draw footprints, hands and head height into the stream
+    std::string controllers = "frame"; // "frame", "index", "touch_plus": what a client naming no headset holds
     std::string occlusionMode = "off"; // "off", "scene_mesh", "environment_depth"
     bool headsetAudio = false;       // Stream server audio to the headset
 

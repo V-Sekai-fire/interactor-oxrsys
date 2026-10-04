@@ -1079,7 +1079,7 @@ void Session::CheckStreamingConnection()
     {
         std::string clientName = streamingServer_->GetClientName();
         inputManager_->SetTrackingReceiver(streamingServer_->GetTrackingReceiver());
-        inputManager_->SetStreamingClientName(clientName);
+        inputManager_->SetStreamingClientName(clientName, Config::Get().GetValues().controllers);
         spdlog::info("OXRSys: Client connected ({}), receiving tracking",
                       clientName);
     }

@@ -10,6 +10,7 @@ set(OXRSYS_RUNTIME_SRC ${CMAKE_SOURCE_DIR}/runtime/src)
 add_library(driver_oxrsys SHARED
     src/Driver.cpp
     ${OXRSYS_RUNTIME_SRC}/Config.cpp
+    ${OXRSYS_RUNTIME_SRC}/ControllerLayout.cpp
     ${OXRSYS_RUNTIME_SRC}/RuntimePlatform.cpp
     ${OXRSYS_RUNTIME_SRC}/RuntimeSockets.cpp
     ${OXRSYS_RUNTIME_SRC}/RuntimeStatus.cpp

@@ -523,3 +523,67 @@ TEST_CASE("TrackingReceiver — angular velocity uses the full prediction horizo
     CHECK_THAT(predicted.headOrientation[1], WithinAbs(std::sin(0.010f), 0.001f));
     CHECK_THAT(predicted.headOrientation[3], WithinAbs(std::cos(0.010f), 0.001f));
 }
+
+TEST_CASE("InputManager — the configured controllers apply to a client that names no headset", "[input]")
+{
+    struct Case
+    {
+        const char* clientName;
+        const char* controllers;
+        const char* expectedProfile;
+    };
+    const Case cases[] = {
+        {"OXRSys XR Pilot", "frame", "/interaction_profiles/meta/touch_plus_controller"},
+        {"OXRSys XR Pilot", "index", "/interaction_profiles/valve/index_controller"},
+        {"OXRSys XR Pilot", "touch_plus", "/interaction_profiles/meta/touch_plus_controller"},
+        {"OXRSys XR Pilot", "unknown", "/interaction_profiles/meta/touch_plus_controller"},
+        // A headset that names itself keeps its own controllers.
+        {"Meta Quest 2", "index", "/interaction_profiles/meta/touch_controller_quest_2"},
+    };
+    for (const Case& testCase : cases)
+    {
+        INFO(testCase.clientName << " " << testCase.controllers);
+        InputManager im;
+        TrackingReceiver receiver;
+        im.SetTrackingReceiver(&receiver);
+        im.SetStreamingClientName(testCase.clientName, testCase.controllers);
+        oxr::protocol::TrackingPacket packet = {};
+        packet.timestampNs = 1'000'000'000;
+        packet.headOrientation[3] = 1.0f;
+        packet.trackingFlags = oxr::protocol::TRACKING_FLAG_LEFT_CONTROLLER_ACTIVE;
+        packet.leftControllerRot[3] = 1.0f;
+        receiver.InjectPacket(reinterpret_cast<const uint8_t*>(&packet), sizeof(packet));
+        im.Update(0.0f);
+        CHECK(im.GetCurrentInteractionProfile(InputManager::Hand::Left) == testCase.expectedProfile);
+    }
+}
+
+TEST_CASE("InputManager — the index controller's left A and B read X and Y", "[input]")
+{
+    constexpr const char* IndexProfile = "/interaction_profiles/valve/index_controller";
+    InputManager im;
+    TrackingReceiver receiver;
+    im.SetTrackingReceiver(&receiver);
+    im.SetStreamingClientName("OXRSys XR Pilot", "index");
+    oxr::protocol::TrackingPacket packet = {};
+    packet.timestampNs = 1'000'000'000;
+    packet.headOrientation[3] = 1.0f;
+    packet.trackingFlags = oxr::protocol::TRACKING_FLAG_LEFT_CONTROLLER_ACTIVE |
+                           oxr::protocol::TRACKING_FLAG_RIGHT_CONTROLLER_ACTIVE;
+    packet.leftControllerRot[3] = 1.0f;
+    packet.rightControllerRot[3] = 1.0f;
+    packet.buttonState = oxr::protocol::BUTTON_X;
+    packet.leftGrip = 0.7f;
+    receiver.InjectPacket(reinterpret_cast<const uint8_t*>(&packet), sizeof(packet));
+    im.Update(0.0f);
+
+    CHECK(im.GetBooleanComponentForProfile(InputManager::Hand::Left, "a/click", IndexProfile));
+    CHECK_FALSE(im.GetBooleanComponentForProfile(InputManager::Hand::Left, "b/click", IndexProfile));
+    // Control: X is the left hand's button, so the right hand's A stays up.
+    CHECK_FALSE(im.GetBooleanComponentForProfile(InputManager::Hand::Right, "a/click", IndexProfile));
+    // Control: under the touch profile the left hand has no A.
+    CHECK_FALSE(im.GetBooleanComponentForProfile(InputManager::Hand::Left, "a/click",
+                                                 "/interaction_profiles/meta/touch_plus_controller"));
+    CHECK_THAT(im.GetFloatComponentForProfile(InputManager::Hand::Left, "squeeze/force", IndexProfile),
+               WithinAbs(0.7f, 0.001f));
+}

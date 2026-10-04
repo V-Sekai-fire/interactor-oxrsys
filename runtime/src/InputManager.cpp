@@ -2,6 +2,7 @@
 
 #include "InputManager.h"
 #include "Config.h"
+#include "ControllerLayout.h"
 #include "Instance.h"
 #include "TrackingReceiver.h"
 #include <glm/gtc/quaternion.hpp>
@@ -45,7 +46,7 @@ bool ContainsAny(const std::string& value, std::initializer_list<const char*> ne
     return false;
 }
 
-std::string DetectStreamingControllerProfile(const std::string& clientName)
+std::string DetectStreamingControllerProfile(const std::string& clientName, const std::string& controllers)
 {
     const std::string lowerName = Lowercase(clientName);
 
@@ -79,8 +80,8 @@ std::string DetectStreamingControllerProfile(const std::string& clientName)
         return kOculusTouchProfile;
     }
 
-    // A client that names no headset, such as a desktop one, holds the current handheld controllers.
-    return kTouchPlusPromotedProfile;
+    // A client that names no headset, such as a desktop one, holds the configured controllers.
+    return LayoutForControllers(controllers).interactionProfile;
 }
 
 void AddProfileIfMissing(std::vector<std::string>& profiles, const std::string& profile)
@@ -184,10 +185,10 @@ void InputManager::SetTrackingReceiver(TrackingReceiver* receiver)
     }
 }
 
-void InputManager::SetStreamingClientName(const std::string& clientName)
+void InputManager::SetStreamingClientName(const std::string& clientName, const std::string& controllers)
 {
     streamingClientName_ = clientName;
-    streamingControllerProfile_ = DetectStreamingControllerProfile(clientName);
+    streamingControllerProfile_ = DetectStreamingControllerProfile(clientName, controllers);
     spdlog::info("InputManager: streaming client='{}' controller_profile='{}'",
                  streamingClientName_, streamingControllerProfile_);
 }
@@ -797,6 +798,19 @@ bool InputManager::GetBooleanComponentForProfile(Hand hand, const std::string& c
         return false;
     }
 
+    // Both hands of the index controller have A and B; the left hand's carry X and Y.
+    if (hand == Hand::Left && profilePath == "/interaction_profiles/valve/index_controller")
+    {
+        if (componentPath == "a/click" || componentPath == "a/touch")
+        {
+            return (buttonState_ & oxr::protocol::BUTTON_X) != 0;
+        }
+        if (componentPath == "b/click" || componentPath == "b/touch")
+        {
+            return (buttonState_ & oxr::protocol::BUTTON_Y) != 0;
+        }
+    }
+
     return GetButtonClick(hand, componentPath);
 }
 
@@ -843,7 +857,7 @@ float InputManager::GetFloatComponentForProfile(Hand hand, const std::string& co
     {
         return GetTriggerValue(hand);
     }
-    if (componentPath == "squeeze/value")
+    if (componentPath == "squeeze/value" || componentPath == "squeeze/force")
     {
         return GetGrabValue(hand);
     }

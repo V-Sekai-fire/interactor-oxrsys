@@ -197,6 +197,7 @@ add_executable(oxrsys_runtime_tests
     tests/TestStreamingAbr.cpp
     tests/TestStreamingFrameQueue.cpp
     tests/TestBodyOverlay.cpp
+    tests/TestControllerLayout.cpp
     tests/TestStreamingReconfigure.cpp
     tests/TestVulkanDispatch.cpp
     tests/TestCompositionLayerAlpha.cpp
@@ -212,6 +213,7 @@ add_executable(oxrsys_runtime_tests
     runtime/src/RuntimeSockets.cpp
     runtime/src/StreamingFrameQueue.cpp
     runtime/src/BodyOverlay.cpp
+    runtime/src/ControllerLayout.cpp
     runtime/src/VulkanDispatch.cpp
 )
 target_include_directories(oxrsys_runtime_tests PRIVATE

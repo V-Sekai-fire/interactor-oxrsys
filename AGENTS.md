@@ -115,6 +115,7 @@ Avoid duplicating the same guidance in multiple files. If commands, platform sta
 - OpenXR environment blend mode support is snapshotted at instance creation; changing `passthrough_enabled` requires restarting the OpenXR app/runtime session to change advertised blend modes.
 - Streaming controller poses are valid only when `TRACKING_FLAG_LEFT_CONTROLLER_ACTIVE` or `TRACKING_FLAG_RIGHT_CONTROLLER_ACTIVE` is present; missing controller flags must not overwrite the last valid runtime pose.
 - `body_hologram = true` in `oxrsys-runtime.toml` draws a gold ring on the floor under the head, a faint ring at head height and a ring at each tracked hand into the streamed eyes, projected with the pose and field of view the frame was rendered for. The ring follows the head, not the STAGE origin.
+- `controllers` in `oxrsys-runtime.toml` picks the controllers OXRSys presents: `frame` (the default), `index` or `touch_plus`. The SteamVR driver reports that controller type with the input profile SteamVR ships for it, and a streaming client whose name matches no headset gets its OpenXR profile; the frame controller has no OpenXR profile of its own and presents as Touch Plus there. A headset that names itself keeps its own controllers. Changing it needs SteamVR or the OpenXR app restarted.
 - The action system is profile-aware and must not regress to hard-forcing `KHR simple_controller`.
 - `xrLocateSpacesKHR` is accepted as an alias of the OpenXR 1.1 `xrLocateSpaces` entry point.
 - Reference spaces currently enumerate `VIEW`, `LOCAL`, `LOCAL_FLOOR`, and `STAGE`.
