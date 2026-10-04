@@ -93,6 +93,9 @@ std::shared_ptr<void> Win32CreateD3D11SwapchainImages(const D3D11GraphicsContext
                                                       const XrSwapchainCreateInfo& createInfo,
                                                       uint32_t imageCount, std::vector<void*>& textures);
 
+// The Vulkan app's interop, for its session to hold so the encoder's D3D11 device outlives any one swapchain.
+std::shared_ptr<void> Win32CreateVulkanInterop(const VulkanGraphicsContext& context);
+
 // The runtime's D3D11 device (ID3D11Device*) for this session's graphics binding, or null.
 void* Win32InteropD3D11Device(const GraphicsContext& context);
 

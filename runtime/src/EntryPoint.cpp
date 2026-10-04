@@ -980,8 +980,13 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrCreateSession(
         vulkanContext.device = reinterpret_cast<void*>(vulkanBinding->device);
         vulkanContext.queueFamilyIndex = vulkanBinding->queueFamilyIndex;
         vulkanContext.queueIndex = vulkanBinding->queueIndex;
-        gSession = std::make_unique<Session>(
-            inst, GraphicsContext::Vulkan(vulkanContext, gMetalDevice));
+#if defined(_WIN32)
+        std::shared_ptr<void> interop = Win32CreateVulkanInterop(vulkanContext);
+#else
+        std::shared_ptr<void> interop;
+#endif
+        gSession = std::make_unique<Session>(inst, GraphicsContext::Vulkan(vulkanContext, gMetalDevice),
+                                             std::move(interop));
         *session = reinterpret_cast<XrSession>(gSession->GetHandle());
         spdlog::info("OXRSys: Session created with Vulkan binding");
         return XR_SUCCESS;

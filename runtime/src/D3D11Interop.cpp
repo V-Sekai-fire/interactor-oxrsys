@@ -1287,6 +1287,11 @@ std::shared_ptr<void> Win32CreateD3D11SwapchainImages(const D3D11GraphicsContext
     return state;
 }
 
+std::shared_ptr<void> Win32CreateVulkanInterop(const VulkanGraphicsContext& context)
+{
+    return GetInterop(context);
+}
+
 void* Win32InteropD3D11Device(const GraphicsContext& context)
 {
     if (context.api == GraphicsApi::D3D11)
