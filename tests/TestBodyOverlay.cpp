@@ -6,6 +6,7 @@
 #include "BodyOverlay.h"
 
 #include <cmath>
+#include <cstring>
 
 using Catch::Matchers::WithinAbs;
 
@@ -114,6 +115,52 @@ TEST_CASE("Body hologram is empty when disabled and grows with tracked hands", "
         CHECK(v.x >= -1.5f);
         CHECK(v.x <= 1.5f);
     }
+}
+
+// A standing body 1.2 m ahead, its right foot planted.
+void StandAhead(BodyOverlay& overlay)
+{
+    const float joints[BodyJointCount][3] = {
+        {0.0f, 0.95f, -1.2f},  {0.0f, 1.2f, -1.2f},   {0.0f, 1.45f, -1.2f},  {0.0f, 1.6f, -1.2f},
+        {-0.18f, 1.4f, -1.2f}, {-0.25f, 1.15f, -1.2f}, {-0.3f, 0.9f, -1.2f},  {0.18f, 1.4f, -1.2f},
+        {0.25f, 1.15f, -1.2f}, {0.3f, 0.9f, -1.2f},    {-0.1f, 0.9f, -1.2f},  {-0.1f, 0.5f, -1.1f},
+        {-0.1f, 0.15f, -1.2f}, {-0.1f, 0.05f, -1.4f}, {0.1f, 0.9f, -1.2f},   {0.1f, 0.48f, -1.2f},
+        {0.1f, 0.07f, -1.2f},  {0.1f, 0.0f, -1.4f}};
+    memcpy(overlay.body, joints, sizeof(joints));
+    overlay.bodyActive = true;
+    overlay.bodyContact = 0x02;
+}
+
+bool HasVertexNear(const std::vector<HologramVertex>& vertices, float x, float y, float r)
+{
+    for (const HologramVertex& v : vertices)
+    {
+        if (std::abs(v.x - x) < r && std::abs(v.y - y) < r)
+            return true;
+    }
+    return false;
+}
+
+TEST_CASE("Body hologram draws the client's body and plants its feet on the floor", "[BodyOverlay]")
+{
+    BodyOverlay overlay;
+    overlay.enabled = true;
+    overlay.ipd = 0.0f;
+    const size_t without = BuildBodyHologram(overlay, 1000, 1000, false).size();
+    StandAhead(overlay);
+    const std::vector<HologramVertex> with = BuildBodyHologram(overlay, 1000, 1000, false);
+    CHECK(with.size() > without + 16 * 6);
+
+    // The planted right foot's disc sits on the floor under its ankle.
+    const float floorUnderAnkle[3] = {overlay.body[16][0], overlay.floorY, overlay.body[16][2]};
+    float px = 0.0f;
+    float py = 0.0f;
+    REQUIRE(ProjectToEye(overlay, 0, floorUnderAnkle, 1000.0f, 1000.0f, px, py));
+    CHECK(HasVertexNear(with, px / 1000.0f * 2.0f - 1.0f, 1.0f - py / 1000.0f * 2.0f, 0.002f));
+
+    // Control: the body is only drawn while the client sends one.
+    overlay.bodyActive = false;
+    CHECK(BuildBodyHologram(overlay, 1000, 1000, false).size() == without);
 }
 
 TEST_CASE("Body hologram's centre turns green with the feet within 4 cm", "[BodyOverlay]")

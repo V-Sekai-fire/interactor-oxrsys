@@ -221,6 +221,35 @@ std::vector<HologramVertex> BuildBodyHologram(const BodyOverlay& overlay, uint32
     // and xr-grid's floor grid around the feet only.
     circle(b, feet, 0.25f, 48, Gold);
     b.disc({0.0f, overlay.floorY, 0.0f}, 0.015f, FeetAtCentre(overlay) ? Green : FaintGold);
+    if (overlay.bodyActive)
+    {
+        // Bones as joint pairs, in the protocol's joint order; the head is the eye, so it is not drawn.
+        constexpr int Bones[][2] = {{0, 1},   {1, 2},   {2, 4},   {4, 5},   {5, 6},   {2, 7},   {7, 8},
+                                    {8, 9},   {0, 10},  {10, 11}, {11, 12}, {12, 13}, {0, 14}, {14, 15},
+                                    {15, 16}, {16, 17}};
+        const float boneThickness = std::max(1.0f, b.thickness() * 0.75f);
+        for (const int* bone : Bones)
+        {
+            const float* p = overlay.body[bone[0]];
+            const float* q = overlay.body[bone[1]];
+            b.segment({p[0], p[1], p[2]}, {q[0], q[1], q[2]}, FaintGold, FaintGold, boneThickness);
+        }
+        for (int joint = 0; joint < BodyJointCount; ++joint)
+        {
+            if (joint != 3)
+            {
+                const float* p = overlay.body[joint];
+                b.disc({p[0], p[1], p[2]}, 0.008f, FaintGold);
+            }
+        }
+        constexpr int Ankles[2] = {12, 16};
+        for (int foot = 0; foot < 2; ++foot)
+        {
+            const float* a = overlay.body[Ankles[foot]];
+            const bool planted = (overlay.bodyContact & (1u << foot)) != 0;
+            b.disc({a[0], overlay.floorY, a[2]}, planted ? 0.03f : 0.015f, planted ? Gold : FaintGold);
+        }
+    }
     for (int hand = 0; hand < 2; ++hand)
     {
         if (overlay.handActive[hand])

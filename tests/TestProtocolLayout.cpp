@@ -41,6 +41,9 @@ TEST_CASE("C++ protocol layouts match the documented wire format", "[protocol]")
     STATIC_REQUIRE(sizeof(NackRequest) == 24);
     STATIC_REQUIRE(sizeof(StreamConfigUpdate) == 68);
     STATIC_REQUIRE(sizeof(StreamConfigAck) == 16);
+    STATIC_REQUIRE(sizeof(BodyPose) == 220);
+    STATIC_REQUIRE(offsetof(BodyPose, joints) == 4);
+    STATIC_REQUIRE(static_cast<uint8_t>(ControlType::BodyPose) == 0x88);
     STATIC_REQUIRE(SERVER_FEATURE_STREAM_RECONFIGURE == 0x00000010);
     STATIC_REQUIRE(CLIENT_CAPABILITY_STREAM_RECONFIGURE == 0x00000010);
 

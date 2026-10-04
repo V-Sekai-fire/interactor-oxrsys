@@ -2361,6 +2361,13 @@ void StreamingServer::HandleControlPayload(const uint8_t* data, size_t size)
     {
         HandleStreamConfigAck(*reinterpret_cast<const oxr::protocol::StreamConfigAck*>(data));
     }
+    else if (type == static_cast<uint8_t>(oxr::protocol::ControlType::BodyPose) &&
+             size >= sizeof(oxr::protocol::BodyPose) && data[1] == oxr::protocol::BODY_JOINT_COUNT)
+    {
+        std::lock_guard<std::mutex> lock(bodyPoseMutex_);
+        memcpy(&bodyPose_, data, sizeof(bodyPose_));
+        bodyPoseAtNs_ = SteadyClockNowNs();
+    }
 }
 
 void StreamingServer::UpdatePredictionHorizon()
@@ -2456,6 +2463,15 @@ void StreamingServer::SendFrame(FrameSource frameSource,
         overlay.handActive[1] = (latest.trackingFlags & oxr::protocol::TRACKING_FLAG_RIGHT_CONTROLLER_ACTIVE) != 0;
         memcpy(overlay.handPosition[0], latest.leftControllerPos, sizeof(float) * 3);
         memcpy(overlay.handPosition[1], latest.rightControllerPos, sizeof(float) * 3);
+        static_assert(BodyJointCount == oxr::protocol::BODY_JOINT_COUNT, "the overlay draws the protocol's joints");
+        std::lock_guard<std::mutex> lock(bodyPoseMutex_);
+        // A client that stopped sending its body leaves none drawn after half a second.
+        if (bodyPoseAtNs_ != 0 && SteadyClockNowNs() - bodyPoseAtNs_ < 500000000)
+        {
+            overlay.bodyActive = true;
+            overlay.bodyContact = bodyPose_.contactMask;
+            memcpy(overlay.body, bodyPose_.joints, sizeof(overlay.body));
+        }
     }
 
     if (frameQueue_.PushLatest(std::move(frame)))

@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 // The body hologram drawn into streamed frames: a footprint ring on the physical floor under the
-// head, the play area's centre, a floor grid around the feet, a faint ring at head height and a marker at each
-// tracked hand, so the wearer sees where the runtime puts their feet against what the game draws.
+// head, the play area's centre, a floor grid around the feet, a faint ring at head height, a marker at each
+// tracked hand, and the client's simulated body when it sends one, so the wearer sees where the runtime puts
+// their feet against what the game draws.
 
 #pragma once
 
 #include <cstdint>
 #include <vector>
+
+// The joints of the simulated body, in the order of oxr::protocol::BodyJoint.
+constexpr int BodyJointCount = 18;
 
 struct BodyOverlay
 {
@@ -22,6 +26,9 @@ struct BodyOverlay
     float floorY = 0.0f;
     bool handActive[2] = {false, false};
     float handPosition[2][3] = {};
+    bool bodyActive = false;
+    uint8_t bodyContact = 0; // bit 0 the left foot, bit 1 the right, planted on the floor
+    float body[BodyJointCount][3] = {};
 };
 
 // A vertex of the hologram's triangles, in the packed texture's normalised coordinates

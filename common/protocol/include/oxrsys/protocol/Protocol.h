@@ -357,6 +357,7 @@ enum class ControlType : uint8_t
     NackRequest = 0x85,        // Client → Server: retransmit specific packets
     StreamConfigUpdate = 0x86, // Server → Client: live encoded stream dimensions changed
     StreamConfigAck = 0x87,    // Client → Server: decoder accepted/rejected the update
+    BodyPose = 0x88,           // Client → Server: the simulated body to draw for the wearer
 };
 
 enum StreamConfigUpdateFlags : uint32_t
@@ -456,6 +457,45 @@ struct StreamConfigAck
     uint32_t sequence = 0;
     uint32_t encodedWidth = 0;
     uint32_t encodedHeight = 0;
+};
+
+// The joints of a BodyPose, in tracking space with the physical floor at y = 0.
+enum BodyJoint : uint8_t
+{
+    BODY_PELVIS,
+    BODY_CHEST,
+    BODY_NECK,
+    BODY_HEAD,
+    BODY_LEFT_SHOULDER,
+    BODY_LEFT_ELBOW,
+    BODY_LEFT_HAND,
+    BODY_RIGHT_SHOULDER,
+    BODY_RIGHT_ELBOW,
+    BODY_RIGHT_HAND,
+    BODY_LEFT_HIP,
+    BODY_LEFT_KNEE,
+    BODY_LEFT_ANKLE,
+    BODY_LEFT_TOE,
+    BODY_RIGHT_HIP,
+    BODY_RIGHT_KNEE,
+    BODY_RIGHT_ANKLE,
+    BODY_RIGHT_TOE,
+    BODY_JOINT_COUNT,
+};
+
+enum BodyContactFlags : uint8_t
+{
+    BODY_CONTACT_LEFT_FOOT = 0x01, // the foot is planted on the floor
+    BODY_CONTACT_RIGHT_FOOT = 0x02,
+};
+
+struct BodyPose
+{
+    ControlType type = ControlType::BodyPose;
+    uint8_t jointCount = BODY_JOINT_COUNT;
+    uint8_t contactMask = 0; // BodyContactFlags
+    uint8_t reserved = 0;
+    float joints[BODY_JOINT_COUNT][3] = {};
 };
 
 } // namespace protocol
