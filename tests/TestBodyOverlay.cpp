@@ -37,6 +37,16 @@ float FloorRingRadius(const BodyOverlay& overlay)
     return std::abs(px - EyeWidth * 0.5f);
 }
 
+bool HasGreen(const std::vector<HologramVertex>& vertices)
+{
+    for (const HologramVertex& v : vertices)
+    {
+        if (v.r < 0.5f && v.g > 0.9f)
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 TEST_CASE("Body hologram projects a point straight ahead to the eye's centre", "[BodyOverlay]")
@@ -104,4 +114,53 @@ TEST_CASE("Body hologram is empty when disabled and grows with tracked hands", "
         CHECK(v.x >= -1.5f);
         CHECK(v.x <= 1.5f);
     }
+}
+
+TEST_CASE("Body hologram's centre turns green with the feet within 4 cm", "[BodyOverlay]")
+{
+    BodyOverlay overlay = LookingDown();
+    overlay.headPosition[0] = 0.03f;
+    CHECK(FeetAtCentre(overlay));
+    CHECK(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
+    // Control: 5 cm away the centre stays gold.
+    overlay.headPosition[0] = 0.05f;
+    CHECK_FALSE(FeetAtCentre(overlay));
+    CHECK_FALSE(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
+}
+
+TEST_CASE("Body hologram's grid fades with distance from the feet and hands as xr-grid's does", "[BodyOverlay]")
+{
+    BodyOverlay overlay = LookingDown();
+    const float atFeet[3] = {0.1f, 0.0f, 0.0f};
+    CHECK_THAT(XrGridOpacity(overlay, atFeet), WithinAbs(1.0, 1e-5));
+    const float halfway[3] = {XrGridFarFade + 0.5f * XrGridFadeZone, 0.0f, 0.0f};
+    CHECK_THAT(XrGridOpacity(overlay, halfway), WithinAbs(0.5, 1e-4));
+    const float beyond[3] = {XrGridFarFade + XrGridFadeZone + 0.01f, 0.0f, 0.0f};
+    CHECK_THAT(XrGridOpacity(overlay, beyond), WithinAbs(0.0, 1e-6));
+
+    // A hand brings the grid up around itself; an untracked one does not.
+    const float byHand[3] = {0.6f, 1.0f, -0.3f};
+    overlay.handPosition[1][0] = 0.6f;
+    overlay.handPosition[1][1] = 1.0f;
+    overlay.handPosition[1][2] = -0.3f;
+    CHECK_THAT(XrGridOpacity(overlay, byHand), WithinAbs(0.0, 1e-6));
+    overlay.handActive[1] = true;
+    CHECK_THAT(XrGridOpacity(overlay, byHand), WithinAbs(1.0, 1e-5));
+
+    // Near the eye the grid thins, so it does not crowd the view.
+    overlay.handPosition[1][0] = 0.0f;
+    overlay.handPosition[1][1] = 1.6f - 0.5f * XrGridNearFade;
+    overlay.handPosition[1][2] = 0.0f;
+    const float nearEye[3] = {0.0f, 1.6f - 0.5f * XrGridNearFade, 0.0f};
+    CHECK_THAT(XrGridOpacity(overlay, nearEye), WithinAbs(0.5, 1e-4));
+}
+
+TEST_CASE("Body hologram's grid bubble moves across a fixed lattice with the feet", "[BodyOverlay]")
+{
+    BodyOverlay overlay = LookingDown();
+    const size_t still = BuildBodyHologram(overlay, 1000, 1000, false).size();
+    CHECK(still > 0);
+    // Moving the feet half a step moves the bubble across the fixed lattice, which changes what is drawn.
+    overlay.headPosition[0] = 0.05f;
+    CHECK(BuildBodyHologram(overlay, 1000, 1000, false).size() != still);
 }

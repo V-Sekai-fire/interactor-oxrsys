@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 // The body hologram drawn into streamed frames: a footprint ring on the physical floor under the
-// head, a faint ring at head height and a marker at each tracked hand, so the wearer sees where the
-// runtime thinks their feet are against the floor the game draws.
+// head, the play area's centre, a grid around the feet and hands, a faint ring at head height and a marker at each
+// tracked hand, so the wearer sees where the runtime puts their feet against what the game draws.
 
 #pragma once
 
@@ -35,6 +35,24 @@ struct HologramVertex
     float b = 0.0f;
     float a = 0.0f;
 };
+
+// CASSIE's 4 cm proximity threshold: the play area's centre turns green with the feet this close.
+constexpr float SnapMeters = 0.04f;
+
+// xr-grid's procedural grid: lattice spacing, node disc radius, and the fades (full within
+// XrGridFarFade of a focus, gone XrGridFadeZone further, thinned within XrGridNearFade of the eye).
+constexpr float XrGridStepMeters = 0.1f;
+constexpr float XrGridPointRadius = 0.006f;
+constexpr float XrGridFarFade = 0.2f;
+constexpr float XrGridFadeZone = 0.15f;
+constexpr float XrGridNearFade = 0.3f;
+
+// Whether the feet are within SnapMeters of the play area's centre.
+bool FeetAtCentre(const BodyOverlay& overlay);
+
+// The grid's opacity at a point: the strongest of its fades from the feet and the tracked hands,
+// thinned near the eye.
+float XrGridOpacity(const BodyOverlay& overlay, const float point[3]);
 
 // Projects a world point into one eye's pixels (0 left, 1 right); false when it is behind the eye.
 bool ProjectToEye(const BodyOverlay& overlay, int eye, const float world[3], float eyeWidth, float eyeHeight,
