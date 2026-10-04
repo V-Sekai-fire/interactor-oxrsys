@@ -644,20 +644,24 @@ public:
         WriteString(c, Prop_ModelNumber_String, "OXRSys Controller");
         WriteString(c, Prop_SerialNumber_String, left_ ? "OXRSYS-LEFT-0" : "OXRSYS-RIGHT-0");
         WriteString(c, Prop_ManufacturerName_String, "OXRSys");
-        WriteString(c, Prop_ControllerType_String, "oxrsys_controller");
+        // SteamVR's bundled touch profile, so apps use their own bindings for the common handheld type.
+        WriteString(c, Prop_ControllerType_String, "oculus_touch");
         // Hidden until physical tracker support lands; oxrsys_controller is the model to restore.
         WriteString(c, Prop_RenderModelName_String, "{oxrsys}oxrsys_hidden");
-        WriteString(c, Prop_InputProfilePath_String, "{oxrsys}/input/oxrsys_controller_profile.json");
+        WriteString(c, Prop_InputProfilePath_String, "{oculus}/input/touch_profile.json");
         WriteProperty(c, Prop_ControllerRoleHint_Int32,
                       static_cast<int32_t>(left_ ? TrackedControllerRole_LeftHand : TrackedControllerRole_RightHand),
                       k_unInt32PropertyTag);
         if (gInput != nullptr)
         {
-            for (size_t i = 0; i < kBooleans.size(); ++i)
-                gInput->CreateBooleanComponent(c, kBooleans[i], &booleans_[i]);
+            const std::array<const char*, kBooleans.size()>& booleans = left_ ? kLeftBooleans : kBooleans;
+            for (size_t i = 0; i < booleans.size(); ++i)
+                gInput->CreateBooleanComponent(c, booleans[i], &booleans_[i]);
+            if (left_)
+                gInput->CreateBooleanComponent(c, "/input/system/click", &menu_);
             for (size_t i = 0; i < kScalars.size(); ++i)
                 gInput->CreateScalarComponent(c, kScalars[i], &scalars_[i], VRScalarType_Absolute,
-                                              i >= 3 ? VRScalarUnits_NormalizedTwoSided : VRScalarUnits_NormalizedOneSided);
+                                              i >= 2 ? VRScalarUnits_NormalizedTwoSided : VRScalarUnits_NormalizedOneSided);
         }
         return VRInitError_None;
     }
@@ -704,11 +708,12 @@ public:
             const bool stickTouch = stickClick || stick[0] != 0.0f || stick[1] != 0.0f;
             const bool lower = (b & (left_ ? BUTTON_X : BUTTON_A)) != 0;
             const bool upper = (b & (left_ ? BUTTON_Y : BUTTON_B)) != 0;
-            const bool values[] = {trigger > 0.5f, trigger > 0.0f, grip > 0.5f, grip > 0.0f, stickClick, stickTouch,
-                                   lower, lower, upper, upper, !left_ && (b & BUTTON_MENU) != 0};
+            const bool values[] = {trigger > 0.0f, grip > 0.0f, stickClick, stickTouch, lower, lower, upper, upper};
             for (size_t i = 0; i < kBooleans.size(); ++i)
                 gInput->UpdateBooleanComponent(booleans_[i], values[i], 0.0);
-            const float scalars[] = {trigger, grip, grip, stick[0], stick[1]};
+            if (left_)
+                gInput->UpdateBooleanComponent(menu_, (b & BUTTON_MENU) != 0, 0.0);
+            const float scalars[] = {trigger, grip, stick[0], stick[1]};
             for (size_t i = 0; i < kScalars.size(); ++i)
                 gInput->UpdateScalarComponent(scalars_[i], scalars[i], 0.0);
         }
@@ -716,19 +721,21 @@ public:
 
 private:
     static constexpr uint32_t kInvalidId = 0xFFFFFFFFu;
-    // The input layout of the common handheld type in the profile's compatibility mode, so apps
-    // without bindings for this controller use theirs for that one.
-    static constexpr std::array<const char*, 11> kBooleans = {
-        "/input/trigger/click", "/input/trigger/touch", "/input/grip/click", "/input/grip/touch",
-        "/input/thumbstick/click", "/input/thumbstick/touch", "/input/a/click", "/input/a/touch",
-        "/input/b/click", "/input/b/touch", "/input/system/click"};
-    static constexpr std::array<const char*, 5> kScalars = {
-        "/input/trigger/value", "/input/grip/value", "/input/grip/force", "/input/thumbstick/x", "/input/thumbstick/y"};
+    // The touch profile's inputs; the left hand has x, y and the menu where the right has a and b.
+    static constexpr std::array<const char*, 8> kBooleans = {
+        "/input/trigger/touch", "/input/grip/touch", "/input/joystick/click", "/input/joystick/touch",
+        "/input/a/click", "/input/a/touch", "/input/b/click", "/input/b/touch"};
+    static constexpr std::array<const char*, 8> kLeftBooleans = {
+        "/input/trigger/touch", "/input/grip/touch", "/input/joystick/click", "/input/joystick/touch",
+        "/input/x/click", "/input/x/touch", "/input/y/click", "/input/y/touch"};
+    static constexpr std::array<const char*, 4> kScalars = {
+        "/input/trigger/value", "/input/grip/value", "/input/joystick/x", "/input/joystick/y"};
     bool left_;
     uint32_t id_ = kInvalidId;
     DriverPose_t pose_ = {};
     std::array<VRInputComponentHandle_t, kBooleans.size()> booleans_ = {};
     std::array<VRInputComponentHandle_t, kScalars.size()> scalars_ = {};
+    VRInputComponentHandle_t menu_ = 0;
 };
 
 class Hmd final : public ITrackedDeviceServerDriver
