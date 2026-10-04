@@ -116,59 +116,51 @@ TEST_CASE("Body hologram is empty when disabled and grows with tracked hands", "
     }
 }
 
-TEST_CASE("Body hologram's grid lights the node nearest the feet and the centre within 4 cm", "[BodyOverlay]")
+TEST_CASE("Body hologram's centre turns green with the feet within 4 cm", "[BodyOverlay]")
 {
     BodyOverlay overlay = LookingDown();
-    int x = 99;
-    int z = 99;
-    overlay.headPosition[0] = 0.024f;
-    NearestGridNode(overlay, x, z);
-    CHECK(x == 0);
-    CHECK(z == 0);
+    overlay.headPosition[0] = 0.03f;
     CHECK(FeetAtCentre(overlay));
-
-    // Two centimetres further, the light steps to the next node though the feet barely moved.
-    overlay.headPosition[0] = 0.026f;
-    NearestGridNode(overlay, x, z);
-    CHECK(x == 1);
-    CHECK(FeetAtCentre(overlay));
-
-    overlay.headPosition[0] = 0.0f;
-    overlay.headPosition[2] = -0.11f;
-    NearestGridNode(overlay, x, z);
-    CHECK(x == 0);
-    CHECK(z == -2);
-    CHECK_FALSE(FeetAtCentre(overlay));
-
-    // Control: the centre is gold 5 cm away and green 3 cm away.
-    overlay.headPosition[2] = 0.05f;
-    CHECK_FALSE(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
-    overlay.headPosition[2] = 0.03f;
     CHECK(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
+    // Control: 5 cm away the centre stays gold.
+    overlay.headPosition[0] = 0.05f;
+    CHECK_FALSE(FeetAtCentre(overlay));
+    CHECK_FALSE(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
 }
 
-TEST_CASE("Body hologram's 3D lattice lights the node nearest a hand", "[BodyOverlay]")
+TEST_CASE("Body hologram's grid fades with distance from the feet and hands as xr-grid's does", "[BodyOverlay]")
 {
     BodyOverlay overlay = LookingDown();
-    int node[3] = {};
-    const float near[3] = {0.21f, 1.02f, -0.29f};
-    CHECK(NearestLatticeNode(overlay, near, node));
-    CHECK(node[0] == 2);
-    CHECK(node[1] == 2);
-    CHECK(node[2] == -3);
-    // Control: 5 cm off the node in any axis is outside the 4 cm snap.
-    const float off[3] = {0.25f, 1.0f, -0.3f};
-    CHECK_FALSE(NearestLatticeNode(overlay, off, node));
-    const float high[3] = {0.2f, 1.05f, -0.3f};
-    CHECK_FALSE(NearestLatticeNode(overlay, high, node));
+    const float atFeet[3] = {0.1f, 0.0f, 0.0f};
+    CHECK_THAT(XrGridOpacity(overlay, atFeet), WithinAbs(1.0, 1e-5));
+    const float halfway[3] = {XrGridFarFade + 0.5f * XrGridFadeZone, 0.0f, 0.0f};
+    CHECK_THAT(XrGridOpacity(overlay, halfway), WithinAbs(0.5, 1e-4));
+    const float beyond[3] = {XrGridFarFade + XrGridFadeZone + 0.01f, 0.0f, 0.0f};
+    CHECK_THAT(XrGridOpacity(overlay, beyond), WithinAbs(0.0, 1e-6));
 
-    overlay.handActive[1] = true;
-    overlay.handPosition[1][0] = 0.25f;
+    // A hand brings the grid up around itself; an untracked one does not.
+    const float byHand[3] = {0.6f, 1.0f, -0.3f};
+    overlay.handPosition[1][0] = 0.6f;
     overlay.handPosition[1][1] = 1.0f;
     overlay.handPosition[1][2] = -0.3f;
-    // The feet are off the centre, so any green comes from the hand.
-    overlay.headPosition[0] = 0.5f;
-    CHECK_FALSE(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
-    overlay.handPosition[1][0] = 0.21f;
-    CHECK(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
+    CHECK_THAT(XrGridOpacity(overlay, byHand), WithinAbs(0.0, 1e-6));
+    overlay.handActive[1] = true;
+    CHECK_THAT(XrGridOpacity(overlay, byHand), WithinAbs(1.0, 1e-5));
+
+    // Near the eye the grid thins, so it does not crowd the view.
+    overlay.handPosition[1][0] = 0.0f;
+    overlay.handPosition[1][1] = 1.6f - 0.5f * XrGridNearFade;
+    overlay.handPosition[1][2] = 0.0f;
+    const float nearEye[3] = {0.0f, 1.6f - 0.5f * XrGridNearFade, 0.0f};
+    CHECK_THAT(XrGridOpacity(overlay, nearEye), WithinAbs(0.5, 1e-4));
+}
+
+TEST_CASE("Body hologram's grid bubble moves across a fixed lattice with the feet", "[BodyOverlay]")
+{
+    BodyOverlay overlay = LookingDown();
+    const size_t still = BuildBodyHologram(overlay, 1000, 1000, false).size();
+    CHECK(still > 0);
+    // Moving the feet half a step moves the bubble across the fixed lattice, which changes what is drawn.
+    overlay.headPosition[0] = 0.05f;
+    CHECK(BuildBodyHologram(overlay, 1000, 1000, false).size() != still);
 }

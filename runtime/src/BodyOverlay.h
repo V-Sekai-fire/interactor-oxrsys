@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 // The body hologram drawn into streamed frames: a footprint ring on the physical floor under the
-// head, a floor grid and a 3D lattice around the play area's centre, a faint ring at head height and a marker at each
+// head, the play area's centre, a grid around the feet and hands, a faint ring at head height and a marker at each
 // tracked hand, so the wearer sees where the runtime puts their feet against what the game draws.
 
 #pragma once
@@ -36,26 +36,23 @@ struct HologramVertex
     float a = 0.0f;
 };
 
-// The floor grid around the play area's centre: its spacing, its reach in nodes each way, and
-// CASSIE's 4 cm proximity threshold for lighting the centre.
-constexpr float GridStepMeters = 0.05f;
-constexpr int GridHalfNodes = 8;
+// CASSIE's 4 cm proximity threshold: the play area's centre turns green with the feet this close.
 constexpr float SnapMeters = 0.04f;
 
-// The 3D lattice above the floor grid: 10 cm across, a layer every 50 cm up to 2 m.
-constexpr float LatticeStepMeters = 0.1f;
-constexpr int LatticeHalfNodes = 4;
-constexpr float LatticeLayerMeters = 0.5f;
-constexpr int LatticeLayers = 4;
+// xr-grid's procedural grid: lattice spacing, node disc radius, and the fades (full within
+// XrGridFarFade of a focus, gone XrGridFadeZone further, thinned within XrGridNearFade of the eye).
+constexpr float XrGridStepMeters = 0.1f;
+constexpr float XrGridPointRadius = 0.006f;
+constexpr float XrGridFarFade = 0.2f;
+constexpr float XrGridFadeZone = 0.15f;
+constexpr float XrGridNearFade = 0.3f;
 
-// The grid node nearest the feet, in steps from the centre, and whether the feet are within
-// SnapMeters of the centre.
-void NearestGridNode(const BodyOverlay& overlay, int& x, int& z);
+// Whether the feet are within SnapMeters of the play area's centre.
 bool FeetAtCentre(const BodyOverlay& overlay);
 
-// The lattice node nearest a point, as (x steps, layer, z steps), and whether the point is within
-// SnapMeters of it.
-bool NearestLatticeNode(const BodyOverlay& overlay, const float point[3], int node[3]);
+// The grid's opacity at a point: the strongest of its fades from the feet and the tracked hands,
+// thinned near the eye.
+float XrGridOpacity(const BodyOverlay& overlay, const float point[3]);
 
 // Projects a world point into one eye's pixels (0 left, 1 right); false when it is behind the eye.
 bool ProjectToEye(const BodyOverlay& overlay, int eye, const float world[3], float eyeWidth, float eyeHeight,
