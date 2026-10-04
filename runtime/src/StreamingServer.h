@@ -313,6 +313,9 @@ private:
     std::unique_ptr<TrackingReceiver> trackingReceiver_;
     float renderEyeTangents_[4] = {};
     float renderIpd_ = 0.0f;
+    std::mutex bodyPoseMutex_;
+    oxr::protocol::BodyPose bodyPose_ = {};
+    int64_t bodyPoseAtNs_ = 0;
     bool renderEyesFixed_ = false;
     GraphicsContext graphicsContext_ = {};
 
