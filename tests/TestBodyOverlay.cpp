@@ -37,6 +37,16 @@ float FloorRingRadius(const BodyOverlay& overlay)
     return std::abs(px - EyeWidth * 0.5f);
 }
 
+bool HasGreen(const std::vector<HologramVertex>& vertices)
+{
+    for (const HologramVertex& v : vertices)
+    {
+        if (v.r < 0.5f && v.g > 0.9f)
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 TEST_CASE("Body hologram projects a point straight ahead to the eye's centre", "[BodyOverlay]")
@@ -104,4 +114,35 @@ TEST_CASE("Body hologram is empty when disabled and grows with tracked hands", "
         CHECK(v.x >= -1.5f);
         CHECK(v.x <= 1.5f);
     }
+}
+
+TEST_CASE("Body hologram's grid lights the node nearest the feet and the centre within 4 cm", "[BodyOverlay]")
+{
+    BodyOverlay overlay = LookingDown();
+    int x = 99;
+    int z = 99;
+    overlay.headPosition[0] = 0.024f;
+    NearestGridNode(overlay, x, z);
+    CHECK(x == 0);
+    CHECK(z == 0);
+    CHECK(FeetAtCentre(overlay));
+
+    // Two centimetres further, the light steps to the next node though the feet barely moved.
+    overlay.headPosition[0] = 0.026f;
+    NearestGridNode(overlay, x, z);
+    CHECK(x == 1);
+    CHECK(FeetAtCentre(overlay));
+
+    overlay.headPosition[0] = 0.0f;
+    overlay.headPosition[2] = -0.11f;
+    NearestGridNode(overlay, x, z);
+    CHECK(x == 0);
+    CHECK(z == -2);
+    CHECK_FALSE(FeetAtCentre(overlay));
+
+    // Control: the centre is gold 5 cm away and green 3 cm away.
+    overlay.headPosition[2] = 0.05f;
+    CHECK_FALSE(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
+    overlay.headPosition[2] = 0.03f;
+    CHECK(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
 }

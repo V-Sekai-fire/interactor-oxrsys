@@ -36,6 +36,7 @@ struct Colour
 
 constexpr Colour Gold = {1.0f, 0.78f, 0.24f, 0.85f};
 constexpr Colour FaintGold = {1.0f, 0.78f, 0.24f, 0.35f};
+constexpr Colour Green = {0.35f, 1.0f, 0.5f, 0.9f};
 
 class Builder
 {
@@ -159,6 +160,35 @@ std::vector<HologramVertex> BuildBodyHologram(const BodyOverlay& overlay, uint32
     circle(b, feet, 0.25f, 48, Gold);
     b.segment({feet.x - 0.1f, feet.y, feet.z}, {feet.x + 0.1f, feet.y, feet.z}, Gold);
     b.segment({feet.x, feet.y, feet.z - 0.1f}, {feet.x, feet.y, feet.z + 0.1f}, Gold);
+    // A floor grid around the play area's centre, a scale reference as in CASSIE: a node every
+    // GridStepMeters, the one nearest the feet lit, and the centre green once the feet are within
+    // SnapMeters of it, so a shift of one step reads as the light moving to the next node.
+    int nearX = 0;
+    int nearZ = 0;
+    NearestGridNode(overlay, nearX, nearZ);
+    const bool atCentre = FeetAtCentre(overlay);
+    for (int i = -GridHalfNodes; i <= GridHalfNodes; ++i)
+    {
+        for (int j = -GridHalfNodes; j <= GridHalfNodes; ++j)
+        {
+            const Vec3 node = {GridStepMeters * float(i), overlay.floorY, GridStepMeters * float(j)};
+            if (i == 0 && j == 0)
+            {
+                const Colour& centre = atCentre ? Green : Gold;
+                circle(b, node, 0.02f, 16, centre);
+                b.segment({node.x - 0.04f, node.y, node.z}, {node.x + 0.04f, node.y, node.z}, centre);
+                b.segment({node.x, node.y, node.z - 0.04f}, {node.x, node.y, node.z + 0.04f}, centre);
+            }
+            else if (i == nearX && j == nearZ)
+            {
+                circle(b, node, 0.012f, 12, Gold);
+            }
+            else
+            {
+                b.segment({node.x - 0.006f, node.y, node.z}, {node.x + 0.006f, node.y, node.z}, FaintGold);
+            }
+        }
+    }
     // Head height: a faint ring of 60 cm around the head.
     circle(b, {overlay.headPosition[0], overlay.headPosition[1], overlay.headPosition[2]}, 0.6f, 64, FaintGold);
     for (int hand = 0; hand < 2; ++hand)
@@ -169,6 +199,19 @@ std::vector<HologramVertex> BuildBodyHologram(const BodyOverlay& overlay, uint32
         circle(b, {p[0], p[1], p[2]}, 0.05f, 16, Gold);
     }
     return b.take();
+}
+
+void NearestGridNode(const BodyOverlay& overlay, int& x, int& z)
+{
+    x = int(std::lround(overlay.headPosition[0] / GridStepMeters));
+    z = int(std::lround(overlay.headPosition[2] / GridStepMeters));
+}
+
+bool FeetAtCentre(const BodyOverlay& overlay)
+{
+    const float x = overlay.headPosition[0];
+    const float z = overlay.headPosition[2];
+    return std::sqrt(x * x + z * z) < SnapMeters;
 }
 
 void SetEyeTangentsFromAngles(BodyOverlay& overlay, const float angles[4])

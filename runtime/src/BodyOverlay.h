@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 // The body hologram drawn into streamed frames: a footprint ring on the physical floor under the
-// head, a faint ring at head height and a marker at each tracked hand, so the wearer sees where the
-// runtime thinks their feet are against the floor the game draws.
+// head, a floor grid around the play area's centre, a faint ring at head height and a marker at each
+// tracked hand, so the wearer sees where the runtime puts their feet against what the game draws.
 
 #pragma once
 
@@ -35,6 +35,17 @@ struct HologramVertex
     float b = 0.0f;
     float a = 0.0f;
 };
+
+// The floor grid around the play area's centre: its spacing, its reach in nodes each way, and
+// CASSIE's 4 cm proximity threshold for lighting the centre.
+constexpr float GridStepMeters = 0.05f;
+constexpr int GridHalfNodes = 8;
+constexpr float SnapMeters = 0.04f;
+
+// The grid node nearest the feet, in steps from the centre, and whether the feet are within
+// SnapMeters of the centre.
+void NearestGridNode(const BodyOverlay& overlay, int& x, int& z);
+bool FeetAtCentre(const BodyOverlay& overlay);
 
 // Projects a world point into one eye's pixels (0 left, 1 right); false when it is behind the eye.
 bool ProjectToEye(const BodyOverlay& overlay, int eye, const float world[3], float eyeWidth, float eyeHeight,
