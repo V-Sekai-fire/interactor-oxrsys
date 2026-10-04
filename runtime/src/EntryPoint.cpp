@@ -960,6 +960,11 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrCreateSession(
 #ifdef XR_USE_GRAPHICS_API_VULKAN
     if (vulkanBinding)
     {
+        if (vulkanBinding->instance == VK_NULL_HANDLE || vulkanBinding->physicalDevice == VK_NULL_HANDLE ||
+            vulkanBinding->device == VK_NULL_HANDLE)
+        {
+            return XR_ERROR_GRAPHICS_DEVICE_INVALID;
+        }
         if (!EnsureVulkanInstanceDispatch(vulkanBinding->instance, "xrCreateSession Vulkan binding"))
         {
             return XR_ERROR_RUNTIME_FAILURE;
@@ -3497,8 +3502,9 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetVulkanGraphicsRequirementsKHR(
 
     graphicsRequirements->type = XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR;
 #if defined(_WIN32)
-    // External memory and timeline semaphores need Vulkan 1.1 (VDXR vulkan_interop.cpp:397-403).
-    graphicsRequirements->minApiVersionSupported = XR_MAKE_VERSION(1, 1, 0);
+    // Vulkan 1.0 suffices: the external memory and timeline semaphore features come from the KHR
+    // extensions xrGetVulkan*ExtensionsKHR asks for.
+    graphicsRequirements->minApiVersionSupported = XR_MAKE_VERSION(1, 0, 0);
     graphicsRequirements->maxApiVersionSupported = XR_MAKE_VERSION(2, 0, 0);
 #else
     graphicsRequirements->minApiVersionSupported = XR_MAKE_VERSION(1, 0, 0);
