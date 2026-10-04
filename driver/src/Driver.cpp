@@ -46,6 +46,15 @@ constexpr uint32_t kEyeHeight = 1680;
 constexpr float kRefreshHz = 90.0f;
 constexpr float kIpdMeters = 0.063f;
 constexpr char kSettingsSection[] = "driver_oxrsys";
+// Our own tracking universe, and its room setup supplied by the driver, which SteamVR prefers over a
+// saved one: the poses already put the floor at y = 0, so the standing transform is the identity and
+// no calibration saved on the desk can move the floor. The id spells OXRS.
+constexpr uint64_t kUniverseId = 0x4F585253;
+constexpr char kChaperoneJson[] =
+    R"({"jsonid":"chaperone_info","version":5,"universes":[{"universeID":"1331188307",)"
+    R"("standing":{"translation":[0,0,0],"yaw":0},"seated":{"translation":[0,0,0],"yaw":0},"play_area":[2,2],)"
+    R"("collision_bounds":[[[-1,0,-1],[-1,2.4,-1],[-1,2.4,1],[-1,0,1]],[[-1,0,1],[-1,2.4,1],[1,2.4,1],[1,0,1]],)"
+    R"([[1,0,1],[1,2.4,1],[1,2.4,-1],[1,0,-1]],[[1,0,-1],[1,2.4,-1],[-1,2.4,-1],[-1,0,-1]]]}]})";
 
 IVRServerDriverHost* gHost = nullptr;
 IVRProperties* gProperties = nullptr;
@@ -617,8 +626,8 @@ private:
     std::atomic<int64_t> nextVsyncNs_{0};
 };
 
-// A hand that SteamVR sees only while its grip or trigger is held, so it draws that hand's laser;
-// released, it reports disconnected and the head pose is the pointer again.
+// A hand that is connected while the client reports its controller active; without controllers the
+// dashboard pointer is the head and the headset button selects.
 class Controller final : public ITrackedDeviceServerDriver
 {
 public:
@@ -636,19 +645,19 @@ public:
         WriteString(c, Prop_SerialNumber_String, left_ ? "OXRSYS-LEFT-0" : "OXRSYS-RIGHT-0");
         WriteString(c, Prop_ManufacturerName_String, "OXRSys");
         WriteString(c, Prop_ControllerType_String, "oxrsys_controller");
+        // Hidden until physical tracker support lands; oxrsys_controller is the model to restore.
+        WriteString(c, Prop_RenderModelName_String, "{oxrsys}oxrsys_hidden");
         WriteString(c, Prop_InputProfilePath_String, "{oxrsys}/input/oxrsys_controller_profile.json");
         WriteProperty(c, Prop_ControllerRoleHint_Int32,
                       static_cast<int32_t>(left_ ? TrackedControllerRole_LeftHand : TrackedControllerRole_RightHand),
                       k_unInt32PropertyTag);
         if (gInput != nullptr)
         {
-            gInput->CreateBooleanComponent(c, "/input/trigger/click", &triggerClick_);
-            gInput->CreateScalarComponent(c, "/input/trigger/value", &triggerValue_, VRScalarType_Absolute,
-                                          VRScalarUnits_NormalizedOneSided);
-            gInput->CreateBooleanComponent(c, "/input/grip/click", &gripClick_);
-            gInput->CreateScalarComponent(c, "/input/grip/value", &gripValue_, VRScalarType_Absolute,
-                                          VRScalarUnits_NormalizedOneSided);
-            gInput->CreateBooleanComponent(c, "/input/system/click", &systemClick_);
+            for (size_t i = 0; i < kBooleans.size(); ++i)
+                gInput->CreateBooleanComponent(c, kBooleans[i], &booleans_[i]);
+            for (size_t i = 0; i < kScalars.size(); ++i)
+                gInput->CreateScalarComponent(c, kScalars[i], &scalars_[i], VRScalarType_Absolute,
+                                              i >= 3 ? VRScalarUnits_NormalizedTwoSided : VRScalarUnits_NormalizedOneSided);
         }
         return VRInitError_None;
     }
@@ -681,30 +690,45 @@ public:
         pose_.qRotation.z = rotation[2];
         pose_.qRotation.w = rotation[3];
         pose_.result = TrackingResult_Running_OK;
-        const bool present = grip > 0.5f || trigger > 0.5f;
+        const bool present = (packet.trackingFlags & (left_ ? oxr::protocol::TRACKING_FLAG_LEFT_CONTROLLER_ACTIVE
+                                                            : oxr::protocol::TRACKING_FLAG_RIGHT_CONTROLLER_ACTIVE)) != 0;
         pose_.poseIsValid = present;
         pose_.deviceIsConnected = present;
         gHost->TrackedDevicePoseUpdated(id_, pose_, sizeof(pose_));
         if (gInput != nullptr)
         {
-            gInput->UpdateBooleanComponent(triggerClick_, trigger > 0.5f, 0.0);
-            gInput->UpdateScalarComponent(triggerValue_, trigger, 0.0);
-            gInput->UpdateBooleanComponent(gripClick_, grip > 0.5f, 0.0);
-            gInput->UpdateScalarComponent(gripValue_, grip, 0.0);
-            gInput->UpdateBooleanComponent(systemClick_, false, 0.0);
+            using namespace oxr::protocol;
+            const uint32_t b = packet.buttonState;
+            const float* stick = left_ ? packet.leftThumbstick : packet.rightThumbstick;
+            const bool stickClick = (b & (left_ ? BUTTON_LEFT_THUMBSTICK : BUTTON_RIGHT_THUMBSTICK)) != 0;
+            const bool stickTouch = stickClick || stick[0] != 0.0f || stick[1] != 0.0f;
+            const bool lower = (b & (left_ ? BUTTON_X : BUTTON_A)) != 0;
+            const bool upper = (b & (left_ ? BUTTON_Y : BUTTON_B)) != 0;
+            const bool values[] = {trigger > 0.5f, trigger > 0.0f, grip > 0.5f, grip > 0.0f, stickClick, stickTouch,
+                                   lower, lower, upper, upper, !left_ && (b & BUTTON_MENU) != 0};
+            for (size_t i = 0; i < kBooleans.size(); ++i)
+                gInput->UpdateBooleanComponent(booleans_[i], values[i], 0.0);
+            const float scalars[] = {trigger, grip, grip, stick[0], stick[1]};
+            for (size_t i = 0; i < kScalars.size(); ++i)
+                gInput->UpdateScalarComponent(scalars_[i], scalars[i], 0.0);
         }
     }
 
 private:
     static constexpr uint32_t kInvalidId = 0xFFFFFFFFu;
+    // The input layout of the common handheld type in the profile's compatibility mode, so apps
+    // without bindings for this controller use theirs for that one.
+    static constexpr std::array<const char*, 11> kBooleans = {
+        "/input/trigger/click", "/input/trigger/touch", "/input/grip/click", "/input/grip/touch",
+        "/input/thumbstick/click", "/input/thumbstick/touch", "/input/a/click", "/input/a/touch",
+        "/input/b/click", "/input/b/touch", "/input/system/click"};
+    static constexpr std::array<const char*, 5> kScalars = {
+        "/input/trigger/value", "/input/grip/value", "/input/grip/force", "/input/thumbstick/x", "/input/thumbstick/y"};
     bool left_;
     uint32_t id_ = kInvalidId;
     DriverPose_t pose_ = {};
-    VRInputComponentHandle_t triggerClick_ = 0;
-    VRInputComponentHandle_t triggerValue_ = 0;
-    VRInputComponentHandle_t gripClick_ = 0;
-    VRInputComponentHandle_t gripValue_ = 0;
-    VRInputComponentHandle_t systemClick_ = 0;
+    std::array<VRInputComponentHandle_t, kBooleans.size()> booleans_ = {};
+    std::array<VRInputComponentHandle_t, kScalars.size()> scalars_ = {};
 };
 
 class Hmd final : public ITrackedDeviceServerDriver
@@ -741,7 +765,8 @@ public:
         WriteProperty(c, Prop_SecondsFromVsyncToPhotons_Float, 0.0f, k_unFloatPropertyTag);
         WriteProperty(c, Prop_DriverDirectModeSendsVsyncEvents_Bool, true, k_unBoolPropertyTag);
         WriteProperty(c, Prop_IsOnDesktop_Bool, false, k_unBoolPropertyTag);
-        WriteProperty(c, Prop_CurrentUniverseId_Uint64, static_cast<uint64_t>(2), k_unUint64PropertyTag);
+        WriteProperty(c, Prop_CurrentUniverseId_Uint64, kUniverseId, k_unUint64PropertyTag);
+        WriteString(c, Prop_DriverProvidedChaperoneJson_String, kChaperoneJson);
         WriteProperty(c, Prop_GraphicsAdapterLuid_Uint64, direct_.AdapterLuid(), k_unUint64PropertyTag);
         // The headset's button, as on a headset whose button selects by gaze when no controller is held.
         WriteString(c, Prop_ControllerType_String, "oxrsys_hmd");

@@ -26,8 +26,14 @@ struct SimulatorTrackingPose
     float pitch = 0.0f;
     float roll = 0.0f;
     float headPosition[3] = {0.0f, 1.6f, 0.0f};
-    float leftControllerPosition[3] = {-0.2f, 1.3f, -0.4f};
-    float rightControllerPosition[3] = {0.2f, 1.3f, -0.4f};
+    // Hands rest at the sides of the body, relative to the head in its yaw frame, so they follow
+    // walking and turning. While pointing, the right, dominant hand rises to just under the line of sight.
+    float leftHandOffset[3] = {-0.22f, -0.72f, -0.05f};
+    float rightHandOffset[3] = {0.22f, -0.72f, -0.05f};
+    // Pointing latches with no time limit (WCAG 2.2 SC 2.2.1): the first trigger or system press
+    // raises the hand and it stays up until the user lowers it.
+    bool pointing = false;
+    float pointingAge = 0.0f;
 };
 
 void advanceSimulatorTracking(SimulatorTrackingPose& pose,
@@ -40,7 +46,8 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
                                  int64_t timestampNs,
                                  float verticalFovDegrees,
                                  float eyeAspect,
-                                 oxr::protocol::TrackingPacket& packet);
+                                 oxr::protocol::TrackingPacket& packet,
+                                 bool controllersPresent = true);
 
 int simulatorKeyIdentifier(const QKeyEvent& event);
 

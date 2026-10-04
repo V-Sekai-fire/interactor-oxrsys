@@ -9,6 +9,7 @@
 #include <QDebug>
 #include <QSet>
 
+#include <cmath>
 #include <cstring>
 #include <stdexcept>
 
@@ -204,8 +205,7 @@ void testTrackingFlagsAndMovementTargets()
     keys.insert(Qt::Key_W);
     advanceSimulatorTracking(pose, {}, keys, 1.0f);
     expect(pose.headPosition[2] < -1.9f, "Expected unmodified movement to move head");
-    expect(pose.leftControllerPosition[2] == -0.4f,
-           "Expected head movement to leave left controller in place");
+    expect(pose.leftHandOffset[2] == -0.05f, "Expected head movement to leave the left hand's offset alone");
 
     SimulatorTrackingPose shiftedPose;
     QSet<int> shiftedKeys;
@@ -214,8 +214,7 @@ void testTrackingFlagsAndMovementTargets()
     advanceSimulatorTracking(shiftedPose, {}, shiftedKeys, 1.0f);
     expect(shiftedPose.headPosition[2] == 0.0f,
            "Expected left-shift movement to leave head in place");
-    expect(shiftedPose.leftControllerPosition[2] < -1.9f,
-           "Expected left-shift movement to move left controller");
+    expect(shiftedPose.leftHandOffset[2] < -1.9f, "Expected left-shift movement to move the left hand");
 
     SimulatorTrackingPose rightShiftedPose;
     QSet<int> rightShiftedKeys;
@@ -224,8 +223,7 @@ void testTrackingFlagsAndMovementTargets()
     advanceSimulatorTracking(rightShiftedPose, {}, rightShiftedKeys, 1.0f);
     expect(rightShiftedPose.headPosition[2] == 0.0f,
            "Expected right-shift movement to leave head in place");
-    expect(rightShiftedPose.rightControllerPosition[2] < -1.9f,
-           "Expected right-shift movement to move right controller");
+    expect(rightShiftedPose.rightHandOffset[2] < -1.9f, "Expected right-shift movement to move the right hand");
 
     oxr::protocol::TrackingPacket packet = {};
     fillSimulatorTrackingPacket(shiftedPose, shiftedKeys, 42, 100.0f, 1.0f, packet);
@@ -272,6 +270,75 @@ void testTouchControllerKeys()
            "Expected Left and Down to push the right thumbstick left and down");
 }
 
+// Pointing, the right hand sits clear of the line of sight and its laser meets the gaze at panel
+// distance; the trigger waits for the hand to settle so UI sees hover before press.
+void testHandsAimAtGaze()
+{
+    using namespace oxrsys::qt_simulator;
+    using namespace oxr::protocol;
+    SimulatorTrackingPose pose;
+    pose.yaw = 1.2f;
+    pose.pitch = -0.4f;
+    pose.headPosition[0] = 3.0f;
+    TrackingPacket idle = {};
+    fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, idle);
+    expect(idle.rightControllerPos[1] < 1.0f && idle.leftControllerPos[1] < 1.0f,
+           "Expected both hands at the sides of the body while not pointing");
+
+    const QSet<int> clicking = {TriggerMouseKey};
+    advanceSimulatorTracking(pose, {}, clicking, 0.011f);
+    TrackingPacket first = {};
+    fillSimulatorTrackingPacket(pose, clicking, 0, 100.0f, 1.0f, first);
+    expect(first.rightTrigger == 0.0f, "Expected the trigger held back while the hand rises");
+    for (int i = 0; i < 20; ++i)
+    {
+        advanceSimulatorTracking(pose, {}, clicking, 0.011f);
+    }
+    TrackingPacket packet = {};
+    fillSimulatorTrackingPacket(pose, clicking, 0, 100.0f, 1.0f, packet);
+    expect(packet.rightTrigger == 1.0f, "Expected the trigger once the hand has hovered");
+
+    const float* p = packet.rightControllerPos;
+    const float* q = packet.rightControllerRot;
+    const float fx = -2.0f * (q[0] * q[2] + q[3] * q[1]);
+    const float fy = -2.0f * (q[1] * q[2] - q[3] * q[0]);
+    const float fz = -(1.0f - 2.0f * (q[0] * q[0] + q[1] * q[1]));
+    const float ux = -std::sin(1.2f) * std::cos(-0.4f), uy = std::sin(-0.4f), uz = -std::cos(1.2f) * std::cos(-0.4f);
+    const float hx = p[0] - 3.0f, hy = p[1] - 1.6f, hz = p[2];
+    const float onLine = hx * ux + hy * uy + hz * uz;
+    const float offLine = std::sqrt(std::max(0.0f, hx * hx + hy * hy + hz * hz - onLine * onLine));
+    expect(offLine > 0.08f, "Expected the raised hand clear of the line of sight");
+    const float gx = 3.0f + 0.6f * ux, gy = 1.6f + 0.6f * uy, gz = 0.6f * uz;
+    const float dx = gx - p[0], dy = gy - p[1], dz = gz - p[2];
+    const float along = dx * fx + dy * fy + dz * fz;
+    const float miss = std::sqrt(std::max(0.0f, dx * dx + dy * dy + dz * dz - along * along));
+    expect(along > 0.0f && miss < 0.001f, "Expected the hand's laser within 1 mm of the gaze point at 0.6 m");
+
+    advanceSimulatorTracking(pose, {}, {}, 60.0f);
+    TrackingPacket held = {};
+    fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, held);
+    expect(held.rightControllerPos[1] > 1.0f, "Expected pointing to stay up with no time limit");
+    pose.pointing = false;
+    TrackingPacket lowered = {};
+    fillSimulatorTrackingPacket(pose, {}, 0, 100.0f, 1.0f, lowered);
+    expect(lowered.rightControllerPos[1] < 1.0f, "Expected the right hand back at the side once lowered");
+}
+
+void testControllersPresentFlag()
+{
+    using namespace oxrsys::qt_simulator;
+    using namespace oxr::protocol;
+    const uint32_t both = TRACKING_FLAG_LEFT_CONTROLLER_ACTIVE | TRACKING_FLAG_RIGHT_CONTROLLER_ACTIVE;
+    SimulatorTrackingPose pose;
+    TrackingPacket present = {};
+    fillSimulatorTrackingPacket(pose, {Qt::Key_H}, 0, 100.0f, 1.0f, present);
+    expect((present.trackingFlags & both) == both, "Expected both controllers active by default");
+    TrackingPacket absent = {};
+    fillSimulatorTrackingPacket(pose, {Qt::Key_H}, 0, 100.0f, 1.0f, absent, false);
+    expect((absent.trackingFlags & both) == 0, "Expected no controller active with controllers off");
+    expect(absent.rightTrigger == 1.0f, "Expected input state kept with controllers off");
+}
+
 } // namespace
 
 int main()
@@ -288,6 +355,8 @@ int main()
         testTrackingFlagsAndMovementTargets();
         testMouseLookVerticalNotInverted();
         testTouchControllerKeys();
+        testControllersPresentFlag();
+        testHandsAimAtGaze();
     }
     catch (const std::exception& error)
     {

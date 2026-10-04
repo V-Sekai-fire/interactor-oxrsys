@@ -55,6 +55,7 @@ enum EVRScalarType
 enum EVRScalarUnits
 {
     VRScalarUnits_NormalizedOneSided = 0,
+    VRScalarUnits_NormalizedTwoSided = 1,
 };
 
 enum ETrackingResult
@@ -82,6 +83,7 @@ enum ETrackedDeviceProperty
     Prop_TrackingSystemName_String = 1000,
     Prop_ModelNumber_String = 1001,
     Prop_SerialNumber_String = 1002,
+    Prop_RenderModelName_String = 1003,
     Prop_ManufacturerName_String = 1005,
     Prop_ControllerRoleHint_Int32 = 3007,
     Prop_SecondsFromVsyncToPhotons_Float = 2001,
@@ -91,6 +93,7 @@ enum ETrackedDeviceProperty
     Prop_IsOnDesktop_Bool = 2007,
     Prop_DriverDirectModeSendsVsyncEvents_Bool = 2043,
     Prop_GraphicsAdapterLuid_Uint64 = 2045,
+    Prop_DriverProvidedChaperoneJson_String = 2095,
     Prop_InputProfilePath_String = 1037,
     Prop_NamedIconPathDeviceOff_String = 5001,
     Prop_NamedIconPathDeviceSearching_String = 5002,

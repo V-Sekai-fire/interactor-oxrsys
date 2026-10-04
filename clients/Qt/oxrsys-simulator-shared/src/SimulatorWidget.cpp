@@ -5,6 +5,7 @@
 #include <QAbstractButton>
 #include <QAbstractSocket>
 #include <QApplication>
+#include <QCheckBox>
 #include <QCoreApplication>
 #include <QCursor>
 #include <QDateTime>
@@ -21,6 +22,7 @@
 #include <QPainterPath>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QTimer>
 #include <QUdpSocket>
@@ -882,6 +884,20 @@ void SimulatorWidget::buildUi()
     fovRow->addWidget(simulatorFovSlider_, 1);
     fovRow->addWidget(simulatorFovValueLabel_);
     simulatorLayout->addLayout(fovRow);
+    // Off, the headset has no controllers and the dashboard falls back to gaze and the headset button.
+    auto* controllers = new QCheckBox("Controllers", simulatorPanel);
+    controllers->setChecked(controllersPresent_);
+    connect(controllers, &QCheckBox::toggled, this, [this](bool on) { controllersPresent_ = on; });
+    simulatorLayout->addWidget(controllers);
+    pointingToggle_ = new QCheckBox("Pointing (P)", simulatorPanel);
+    connect(pointingToggle_, &QCheckBox::toggled, this, [this](bool on) {
+        if (trackingPose_.pointing != on)
+        {
+            trackingPose_.pointing = on;
+            trackingPose_.pointingAge = 0.0f;
+        }
+    });
+    simulatorLayout->addWidget(pointingToggle_);
     sideLayout->addWidget(simulatorPanel);
     sideLayout->addStretch(1);
     rootLayout->addWidget(side);
@@ -923,9 +939,12 @@ bool SimulatorWidget::eventFilter(QObject* watched, QEvent* event)
                 event->accept();
                 return true;
             }
+            // With controllers the middle button is the controller's system button, which toggles the
+            // dashboard; without them it is the headset button, which opens it and selects by gaze.
             if (mouseEvent->button() == Qt::MiddleButton)
             {
-                setKeyPressed(oxrsys::qt_simulator::HeadsetButtonKey, true);
+                middleKey_ = controllersPresent_ ? int(Qt::Key_M) : oxrsys::qt_simulator::HeadsetButtonKey;
+                setKeyPressed(middleKey_, true);
                 event->accept();
                 return true;
             }
@@ -950,7 +969,7 @@ bool SimulatorWidget::eventFilter(QObject* watched, QEvent* event)
             hasLastMousePosition_ = true;
             if (mouseEvent->button() == Qt::MiddleButton)
             {
-                setKeyPressed(oxrsys::qt_simulator::HeadsetButtonKey, false);
+                setKeyPressed(middleKey_, false);
             }
             if (mouseEvent->button() == Qt::LeftButton)
             {
@@ -1018,6 +1037,12 @@ void SimulatorWidget::keyPressEvent(QKeyEvent* event)
     if (event->key() == Qt::Key_Escape)
     {
         setMouseCaptured(false, "escape");
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_P && !event->isAutoRepeat())
+    {
+        pointingToggle_->toggle();
         event->accept();
         return;
     }
@@ -1098,6 +1123,11 @@ void SimulatorWidget::refreshStats()
 {
     previewStatusDirty_ = false;
     pushPreviewStatus();
+    if (pointingToggle_->isChecked() != trackingPose_.pointing)
+    {
+        const QSignalBlocker block(pointingToggle_);
+        pointingToggle_->setChecked(trackingPose_.pointing);
+    }
     telemetrySparks_->sample({trackingPacketsSent_, videoPacketsReceived_, videoFramesDecoded_, videoFramesDropped_,
                               videoFecRecoveries_, decodeErrors_});
     if (telemetryDirty_)
@@ -1162,7 +1192,8 @@ void SimulatorWidget::fillTrackingPacket(oxr::protocol::TrackingPacket& packet) 
         monotonicNowNs(),
         static_cast<float>(simulatorFovDegrees_),
         simulatorPerEyeAspect(),
-        packet);
+        packet,
+        controllersPresent_);
 }
 
 float SimulatorWidget::simulatorPerEyeAspect() const

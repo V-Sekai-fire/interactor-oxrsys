@@ -39,6 +39,19 @@ Quaternion axisAngle(float x, float y, float z, float angle)
     return {x * sine, y * sine, z * sine, std::cos(halfAngle)};
 }
 
+struct Vector
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+};
+
+Vector rotate(const Quaternion& q, const Vector& v)
+{
+    const Quaternion p = multiply(multiply(q, {v.x, v.y, v.z, 0.0f}), {-q.x, -q.y, -q.z, q.w});
+    return {p.x, p.y, p.z};
+}
+
 Quaternion headQuaternion(float yaw, float pitch, float roll)
 {
     return multiply(multiply(axisAngle(0.0f, 1.0f, 0.0f, yaw),
@@ -70,6 +83,13 @@ void advanceSimulatorTracking(SimulatorTrackingPose& pose,
 {
     constexpr float MouseSensitivity = 0.003f;
     constexpr float MoveSpeed = 2.0f;
+
+    if (containsAny(pressedKeys, {TriggerMouseKey, Qt::Key_H, Qt::Key_M}) && !pose.pointing)
+    {
+        pose.pointing = true;
+        pose.pointingAge = 0.0f;
+    }
+    pose.pointingAge += deltaTime;
 
     pose.yaw -= static_cast<float>(mouseDelta.x()) * MouseSensitivity;
     pose.pitch -= static_cast<float>(mouseDelta.y()) * MouseSensitivity;
@@ -117,22 +137,18 @@ void advanceSimulatorTracking(SimulatorTrackingPose& pose,
         return;
     }
 
-    moveX = moveX / moveLength * MoveSpeed * deltaTime;
-    moveZ = moveZ / moveLength * MoveSpeed * deltaTime;
-
+    const float step = MoveSpeed * deltaTime / moveLength;
     const bool leftShift = pressedKeys.contains(LeftShiftKey);
     const bool rightShift = pressedKeys.contains(RightShiftKey);
-    float* target = pose.headPosition;
-    if (leftShift && !rightShift)
+    float* hand = leftShift && !rightShift ? pose.leftHandOffset : rightShift && !leftShift ? pose.rightHandOffset : nullptr;
+    if (hand != nullptr)
     {
-        target = pose.leftControllerPosition;
+        hand[0] += strafeAmount * step;
+        hand[2] -= forwardAmount * step;
+        return;
     }
-    else if (rightShift && !leftShift)
-    {
-        target = pose.rightControllerPosition;
-    }
-    target[0] += moveX;
-    target[2] += moveZ;
+    pose.headPosition[0] += moveX * step;
+    pose.headPosition[2] += moveZ * step;
 }
 
 void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
@@ -140,13 +156,14 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
                                  int64_t timestampNs,
                                  float verticalFovDegrees,
                                  float eyeAspect,
-                                 oxr::protocol::TrackingPacket& packet)
+                                 oxr::protocol::TrackingPacket& packet,
+                                 bool controllersPresent)
 {
     packet = {};
     packet.timestampNs = timestampNs;
-    packet.trackingFlags =
-        oxr::protocol::TRACKING_FLAG_LEFT_CONTROLLER_ACTIVE |
-        oxr::protocol::TRACKING_FLAG_RIGHT_CONTROLLER_ACTIVE;
+    packet.trackingFlags = controllersPresent ? (oxr::protocol::TRACKING_FLAG_LEFT_CONTROLLER_ACTIVE |
+                                                 oxr::protocol::TRACKING_FLAG_RIGHT_CONTROLLER_ACTIVE)
+                                              : 0u;
     std::copy(std::begin(pose.headPosition),
               std::end(pose.headPosition),
               std::begin(packet.headPosition));
@@ -157,20 +174,41 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
     packet.headOrientation[2] = orientation.z;
     packet.headOrientation[3] = orientation.w;
 
-    std::copy(std::begin(pose.leftControllerPosition),
-              std::end(pose.leftControllerPosition),
-              std::begin(packet.leftControllerPos));
-    std::copy(std::begin(pose.rightControllerPosition),
-              std::end(pose.rightControllerPosition),
-              std::begin(packet.rightControllerPos));
-    packet.leftControllerRot[0] = orientation.x;
-    packet.leftControllerRot[1] = orientation.y;
-    packet.leftControllerRot[2] = orientation.z;
-    packet.leftControllerRot[3] = orientation.w;
-    packet.rightControllerRot[0] = orientation.x;
-    packet.rightControllerRot[1] = orientation.y;
-    packet.rightControllerRot[2] = orientation.z;
-    packet.rightControllerRot[3] = orientation.w;
+    const Vector head = {pose.headPosition[0], pose.headPosition[1], pose.headPosition[2]};
+    const Quaternion bodyYaw = axisAngle(0.0f, 1.0f, 0.0f, pose.yaw);
+    const auto store = [](const Vector& p, const Quaternion& q, float* position, float* rotation) {
+        position[0] = p.x;
+        position[1] = p.y;
+        position[2] = p.z;
+        rotation[0] = q.x;
+        rotation[1] = q.y;
+        rotation[2] = q.z;
+        rotation[3] = q.w;
+    };
+
+    const Vector left = rotate(bodyYaw, {pose.leftHandOffset[0], pose.leftHandOffset[1], pose.leftHandOffset[2]});
+    store({head.x + left.x, head.y + left.y, head.z + left.z}, bodyYaw, packet.leftControllerPos,
+          packet.leftControllerRot);
+    if (!pose.pointing)
+    {
+        const Vector right = rotate(bodyYaw, {pose.rightHandOffset[0], pose.rightHandOffset[1], pose.rightHandOffset[2]});
+        store({head.x + right.x, head.y + right.y, head.z + right.z}, bodyYaw, packet.rightControllerPos,
+              packet.rightControllerRot);
+    }
+    else
+    {
+        // The hand points from just under and right of the eye, clear of the line of sight so the
+        // avatar's hand does not cover what it clicks, at the gaze point UI-panel distance away; apps
+        // that draw the laser from the hand pose then hit what the user looks at.
+        constexpr float PanelDistance = 0.6f;
+        const Vector local = rotate(orientation, {0.05f, -0.10f, -0.25f});
+        const Vector hand = {head.x + local.x, head.y + local.y, head.z + local.z};
+        const Vector g = rotate(orientation, {0.0f, 0.0f, -PanelDistance});
+        const Vector aim = {head.x + g.x - hand.x, head.y + g.y - hand.y, head.z + g.z - hand.z};
+        const float length = std::max(std::sqrt(aim.x * aim.x + aim.y * aim.y + aim.z * aim.z), 1e-4f);
+        store(hand, headQuaternion(std::atan2(-aim.x, -aim.z), std::asin(std::clamp(aim.y / length, -1.0f, 1.0f)), 0.0f),
+              packet.rightControllerPos, packet.rightControllerRot);
+    }
 
     if (pressedKeys.contains(Qt::Key_F))
     {
@@ -192,7 +230,10 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
         packet.buttonState |= oxr::protocol::BUTTON_LEFT_TRIGGER;
         packet.leftTrigger = 1.0f;
     }
-    if (pressedKeys.contains(TriggerMouseKey) && !leftHand)
+    // The right trigger waits until the raised hand has hovered for 150 ms, so UI sees the pointer
+    // arrive before the press.
+    const bool rightSettled = !pose.pointing || pose.pointingAge >= 0.15f;
+    if (pressedKeys.contains(TriggerMouseKey) && !leftHand && rightSettled)
     {
         packet.buttonState |= oxr::protocol::BUTTON_RIGHT_TRIGGER;
         packet.rightTrigger = 1.0f;
@@ -202,7 +243,7 @@ void fillSimulatorTrackingPacket(const SimulatorTrackingPose& pose,
         packet.buttonState |= oxr::protocol::BUTTON_LEFT_TRIGGER;
         packet.leftTrigger = 1.0f;
     }
-    if (pressedKeys.contains(Qt::Key_H))
+    if (pressedKeys.contains(Qt::Key_H) && rightSettled)
     {
         packet.buttonState |= oxr::protocol::BUTTON_RIGHT_TRIGGER;
         packet.rightTrigger = 1.0f;
