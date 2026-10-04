@@ -46,6 +46,7 @@
 #include <dlfcn.h>
 #endif
 #include <memory>
+#include <mutex>
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -3829,8 +3830,31 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetMetalGraphicsRequirementsKHR(
 static XRAPI_ATTR XrResult XRAPI_CALL OxrGetInstanceProcAddr(
     XrInstance instance, const char* name, PFN_xrVoidFunction* function);
 
-// Macro to simplify dispatch
+// Apps may call from any thread and the action and swapchain state is shared, so every entry point
+// but the blocking xrWaitFrame runs under one lock.
+static std::recursive_mutex gApiMutex;
+
+template <auto Fn>
+struct Locked;
+
+template <typename... Args, XrResult(XRAPI_CALL* Fn)(Args...)>
+struct Locked<Fn>
+{
+    static XrResult XRAPI_CALL Call(Args... args)
+    {
+        std::scoped_lock lock(gApiMutex);
+        return Fn(args...);
+    }
+};
+
 #define DISPATCH(funcName, funcPtr)          \
+    if (std::strcmp(name, #funcName) == 0)   \
+    {                                        \
+        *function = reinterpret_cast<PFN_xrVoidFunction>(&Locked<funcPtr>::Call); \
+        return XR_SUCCESS;                   \
+    }
+
+#define DISPATCH_UNLOCKED(funcName, funcPtr) \
     if (std::strcmp(name, #funcName) == 0)   \
     {                                        \
         *function = reinterpret_cast<PFN_xrVoidFunction>(funcPtr); \
@@ -3863,7 +3887,7 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetInstanceProcAddr(
     }
 
     // Global functions
-    DISPATCH(xrGetInstanceProcAddr, OxrGetInstanceProcAddr)
+    DISPATCH_UNLOCKED(xrGetInstanceProcAddr, OxrGetInstanceProcAddr)
     DISPATCH(xrEnumerateInstanceExtensionProperties, OxrEnumerateInstanceExtensionProperties)
     DISPATCH(xrEnumerateApiLayerProperties, OxrEnumerateApiLayerProperties)
     DISPATCH(xrCreateInstance, OxrCreateInstance)
@@ -3891,7 +3915,7 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrGetInstanceProcAddr(
     DISPATCH(xrBeginSession, OxrBeginSession)
     DISPATCH(xrEndSession, OxrEndSession)
     DISPATCH(xrRequestExitSession, OxrRequestExitSession)
-    DISPATCH(xrWaitFrame, OxrWaitFrame)
+    DISPATCH_UNLOCKED(xrWaitFrame, OxrWaitFrame)
     DISPATCH(xrBeginFrame, OxrBeginFrame)
     DISPATCH(xrEndFrame, OxrEndFrame)
     DISPATCH(xrLocateViews, OxrLocateViews)
