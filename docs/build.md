@@ -72,7 +72,7 @@ Windows builds with MSVC through `scripts/windows_build.ps1`. Vulkan and Direct3
 The same build produces a head-mounted display driver for the PC VR runtime's driver interface at
 `build/windows/driver/oxrsys` (`driver.vrdrivermanifest`, `bin/win64/driver_oxrsys.dll`). Register it
 with that runtime's `vrpathreg.exe adddriver <path>` and remove it with `removedriver <path>`. The
-driver hosts the same streaming server, so the Qt simulator connects to it as it does to the OpenXR
+driver hosts the same streaming server, so XR Pilot connects to it as it does to the OpenXR
 runtime. Its interface declarations are generated from `driver/abi/openvr_driver.vtbl` by
 `driver/abi/vtbl.py`; no SDK header is included. Set `OXRSYS_OPENVR_REFERENCE_HEADER` to the SDK's
 `openvr_driver.h` to add the slot reference diff to CTest. The `driver_oxrsys` settings section takes
@@ -246,10 +246,8 @@ cmake --build build-qt
 ctest --test-dir build-qt --output-on-failure
 ```
 
-The standalone targets are `oxrsys-home` and `oxrsys-simulator`. The Qt Home Developer tab opens
-the same shared simulator widget in a dedicated window. The Qt simulator decodes the PyroWave
-stream on the GPU and presents it through a Vulkan swapchain on the preview surface; the Qt
-frontends are not built on macOS, where the Swift simulator decodes PyroWave instead. See
+The Qt target is `oxrsys-home`; it is not built on macOS, where the SwiftUI Home takes its place.
+The Windows and Linux desktop client that decodes the stream is XR Pilot (`V-Sekai-fire/interactor-xr-pilot`). See
 [qt-home.md](platforms/qt-home.md) for Linux registration/install behavior.
 
 ### Unity Editor And macOS Player Helpers

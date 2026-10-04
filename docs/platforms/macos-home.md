@@ -201,7 +201,7 @@ The structured editor covers the current runtime keys:
 - `logging.quest_logcat`
 
 The bitrate control accepts the shared runtime range, `1` to `200` Mbps. Apple
-and Qt simulator clients do not add their own bitrate ceiling, so the runtime
+simulator clients do not add their own bitrate ceiling, so the runtime
 status `max_bitrate_mbps` should reflect the configured value when those
 clients connect.
 

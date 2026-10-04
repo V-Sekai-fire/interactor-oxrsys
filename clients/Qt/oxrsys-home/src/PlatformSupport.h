@@ -21,7 +21,6 @@ QString platformName();
 QString runtimeLibraryFileName();
 QString runtimeBuildPresetName();
 QString runtimeManifestFileName();
-QString simulatorExecutableName();
 QString pathListSeparator();
 QString normalizedPath(const QString& path);
 QString shellQuoted(const QString& value);

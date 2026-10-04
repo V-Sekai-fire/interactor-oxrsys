@@ -176,15 +176,6 @@ QString runtimeManifestFileName()
     return "oxrsys-runtime.json";
 }
 
-QString simulatorExecutableName()
-{
-#if defined(Q_OS_WIN)
-    return "oxrsys-simulator.exe";
-#else
-    return "oxrsys-simulator";
-#endif
-}
-
 QString pathListSeparator()
 {
     return QString(QDir::listSeparator());

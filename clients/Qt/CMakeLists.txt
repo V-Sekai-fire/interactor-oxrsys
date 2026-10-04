@@ -21,6 +21,4 @@ if(NOT DEFINED OXRSYS_PROTOCOL_INCLUDE_DIR)
     set(OXRSYS_PROTOCOL_INCLUDE_DIR "${OXRSYS_REPO_ROOT}/common/protocol/include")
 endif()
 
-add_subdirectory(oxrsys-simulator-shared)
-add_subdirectory(oxrsys-simulator)
 add_subdirectory(oxrsys-home)

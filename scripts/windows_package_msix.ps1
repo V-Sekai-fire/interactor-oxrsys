@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 #
-# Packs a built tree (scripts/windows_build.ps1) into one signed MSIX: OXRSys Home and the
-# simulator as Start-menu apps, plus the runtime and the PC VR driver as files. Without -PfxPath it
+# Packs a built tree (scripts/windows_build.ps1) into one signed MSIX: OXRSys Home as the
+# Start-menu app, plus the runtime and the PC VR driver as files. Without -PfxPath it
 # signs with a self-signed test certificate, installable only once that certificate is trusted.
 #   scripts/windows_package_msix.ps1 [-Version 1.2.0.0] [-OutDir dist] [-PfxPath x.pfx -PfxPassword p]
 param(
@@ -27,7 +27,7 @@ $signtool = "$($sdk.FullName)\x64\signtool.exe"
 
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) ('oxrsys-msix-' + [guid]::NewGuid())
 New-Item -ItemType Directory -Force "$stage\runtime", "$stage\assets" | Out-Null
-foreach ($app in 'home', 'simulator') {
+foreach ($app in @('home')) {
     $from = Join-Path $build "clients\Qt\oxrsys-$app"
     New-Item -ItemType Directory -Force "$stage\$app" | Out-Null
     # The deployed app folder, without CMake's build bookkeeping.

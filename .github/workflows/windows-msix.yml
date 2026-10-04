@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 #
-# Builds the Windows runtime, driver, Home and the simulator with MSVC and pixi's Qt, then packs
+# Builds the Windows runtime, driver, and Home with MSVC and pixi's Qt, then packs
 # and test-signs one MSIX and checks its contents.
 name: windows-msix
 

@@ -4,6 +4,10 @@ This file tracks user-facing, integration-facing, and runtime-relevant changes f
 
 ## 1.2.0 - TBD
 
+### Removed
+
+- Removed the Qt simulator (`clients/Qt/oxrsys-simulator` and `oxrsys-simulator-shared`), its Qt Home Developer tab button and tray entry, and its MSIX app. XR Pilot (`V-Sekai-fire/interactor-xr-pilot`) is the Windows and Linux desktop client; `kernels/simulator` stays, since XR Pilot builds against it.
+
 ### Added
 
 - Added Linux-first Qt frontends under `clients/Qt/`, including Qt Home, a standalone Qt simulator, and a reusable simulator widget.
