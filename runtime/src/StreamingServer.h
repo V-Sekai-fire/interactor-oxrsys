@@ -70,6 +70,10 @@ public:
                    const float* renderHeadOrientation = nullptr,
                    const float* renderHeadPosition = nullptr);
 
+    // The field of view (tangents: left, right, up, down) and IPD frames are rendered with, when the
+    // host fixes them; otherwise the body hologram uses the client's from its tracking.
+    void SetRenderEyes(const float tangents[4], float ipd);
+
     // Set the platform graphics device for VideoEncoder initialization.
     void SetGraphicsContext(const GraphicsContext& graphicsContext) { graphicsContext_ = graphicsContext; }
     void SetGraphicsDevice(void* graphicsDevice) { SetGraphicsContext(GraphicsContext::Metal(graphicsDevice)); }
@@ -307,6 +311,9 @@ private:
     // Sub-components
     std::shared_ptr<VideoEncoder> encoder_;
     std::unique_ptr<TrackingReceiver> trackingReceiver_;
+    float renderEyeTangents_[4] = {};
+    float renderIpd_ = 0.0f;
+    bool renderEyesFixed_ = false;
     GraphicsContext graphicsContext_ = {};
 
     // Frame sending state

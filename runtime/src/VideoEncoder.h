@@ -9,6 +9,7 @@
 #include <mutex>
 #include <vector>
 
+#include "BodyOverlay.h"
 #include "GraphicsTypes.h"
 
 #include <oxrsys/protocol/Protocol.h>
@@ -80,6 +81,9 @@ public:
     bool EncodeStereo(FrameSource frameSource, int64_t timestampNs, OnNalUnitCallback callback,
                       OnFrameEncodedCallback frameCallback = {});
 
+    // The body hologram to draw into the next encoded frame; backends without a drawing path ignore it.
+    void SetBodyOverlay(const BodyOverlay& overlay) { bodyOverlay_ = overlay; }
+
     // Force a keyframe on the next encode
     void ForceKeyframe();
 
@@ -107,6 +111,8 @@ private:
         void* foveatedScratchTexture = nullptr; // id<MTLTexture>
         bool inUse = false;
     };
+
+    BodyOverlay bodyOverlay_;
 
     bool EncodeInternal(FrameSource frameSource, bool stereo,
                         int64_t timestampNs, OnNalUnitCallback callback,

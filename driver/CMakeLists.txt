@@ -15,6 +15,7 @@ add_library(driver_oxrsys SHARED
     ${OXRSYS_RUNTIME_SRC}/RuntimeStatus.cpp
     ${OXRSYS_RUNTIME_SRC}/StreamingFrameQueue.cpp
     ${OXRSYS_RUNTIME_SRC}/StreamingServer.cpp
+    ${OXRSYS_RUNTIME_SRC}/BodyOverlay.cpp
     ${OXRSYS_RUNTIME_SRC}/TrackingReceiver.cpp
     ${OXRSYS_RUNTIME_SRC}/VulkanDispatch.cpp
     ${OXRSYS_RUNTIME_SRC}/D3D11Interop.cpp
@@ -39,7 +40,7 @@ target_compile_definitions(driver_oxrsys PRIVATE
 if(MSVC)
     target_compile_options(driver_oxrsys PRIVATE /utf-8)
 endif()
-target_link_libraries(driver_oxrsys PRIVATE spdlog::spdlog glm::glm oxrsys_pyrowave ws2_32 d3d11 dxgi)
+target_link_libraries(driver_oxrsys PRIVATE spdlog::spdlog glm::glm oxrsys_pyrowave ws2_32 d3d11 dxgi d3dcompiler)
 set_target_properties(driver_oxrsys PROPERTIES
     PREFIX ""
     RUNTIME_OUTPUT_DIRECTORY ${OXRSYS_DRIVER_ROOT}/bin/win64

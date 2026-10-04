@@ -916,6 +916,9 @@ public:
         d3d11.encoderDevice = true;
         server_ = std::make_unique<StreamingServer>();
         server_->SetGraphicsContext(GraphicsContext::D3D11(d3d11));
+        // The compositor renders with GetProjectionRaw's tangents and this IPD, so the hologram does too.
+        const float tangents[4] = {-1.0f, 1.0f, 1.0f, -1.0f};
+        server_->SetRenderEyes(tangents, kIpdMeters);
         if (server_->Start(kEyeWidth, kEyeHeight, static_cast<uint32_t>(kRefreshHz)))
         {
             hmd_->SetStreaming(server_.get());
