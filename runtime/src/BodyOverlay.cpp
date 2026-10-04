@@ -66,6 +66,8 @@ public:
             const float pb[3] = {b.x, b.y, b.z};
             if (!ProjectToEye(overlay_, eye, pa, w_, h_, ax, ay) || !ProjectToEye(overlay_, eye, pb, w_, h_, bx, by))
                 continue;
+            if (!nearView(ax, ay) || !nearView(bx, by))
+                continue;
             quad(eye, ax, ay, bx, by, colour);
         }
     }
@@ -73,6 +75,12 @@ public:
     std::vector<HologramVertex> take() { return std::move(out_); }
 
 private:
+    // Within 0.45 of an eye of the view, so geometry beside the eye does not stretch across it.
+    bool nearView(float x, float y) const
+    {
+        return x > -0.45f * w_ && x < 1.45f * w_ && y > -0.45f * h_ && y < 1.45f * h_;
+    }
+
     void quad(int eye, float ax, float ay, float bx, float by, const Colour& c)
     {
         const float dx = bx - ax;
@@ -189,6 +197,46 @@ std::vector<HologramVertex> BuildBodyHologram(const BodyOverlay& overlay, uint32
             }
         }
     }
+    // Above the floor, CASSIE's 3D lattice: a small three-axis cross at each node, the node nearest
+    // each hand lit, and green once the hand is within SnapMeters of it.
+    int handNode[2][3] = {};
+    bool handNear[2] = {false, false};
+    for (int hand = 0; hand < 2; ++hand)
+    {
+        if (overlay.handActive[hand])
+            handNear[hand] = NearestLatticeNode(overlay, overlay.handPosition[hand], handNode[hand]);
+    }
+    for (int layer = 1; layer <= LatticeLayers; ++layer)
+    {
+        for (int i = -LatticeHalfNodes; i <= LatticeHalfNodes; ++i)
+        {
+            for (int j = -LatticeHalfNodes; j <= LatticeHalfNodes; ++j)
+            {
+                const Vec3 node = {LatticeStepMeters * float(i), overlay.floorY + LatticeLayerMeters * float(layer),
+                                   LatticeStepMeters * float(j)};
+                bool lit = false;
+                bool near = false;
+                for (int hand = 0; hand < 2; ++hand)
+                {
+                    if (overlay.handActive[hand] && handNode[hand][0] == i && handNode[hand][1] == layer &&
+                        handNode[hand][2] == j)
+                    {
+                        lit = true;
+                        near = near || handNear[hand];
+                    }
+                }
+                if (lit)
+                {
+                    circle(b, node, 0.015f, 12, near ? Green : Gold);
+                    continue;
+                }
+                const float arm = 0.008f;
+                b.segment({node.x - arm, node.y, node.z}, {node.x + arm, node.y, node.z}, FaintGold);
+                b.segment({node.x, node.y - arm, node.z}, {node.x, node.y + arm, node.z}, FaintGold);
+                b.segment({node.x, node.y, node.z - arm}, {node.x, node.y, node.z + arm}, FaintGold);
+            }
+        }
+    }
     // Head height: a faint ring of 60 cm around the head.
     circle(b, {overlay.headPosition[0], overlay.headPosition[1], overlay.headPosition[2]}, 0.6f, 64, FaintGold);
     for (int hand = 0; hand < 2; ++hand)
@@ -212,6 +260,17 @@ bool FeetAtCentre(const BodyOverlay& overlay)
     const float x = overlay.headPosition[0];
     const float z = overlay.headPosition[2];
     return std::sqrt(x * x + z * z) < SnapMeters;
+}
+
+bool NearestLatticeNode(const BodyOverlay& overlay, const float point[3], int node[3])
+{
+    node[0] = int(std::lround(point[0] / LatticeStepMeters));
+    node[1] = int(std::lround((point[1] - overlay.floorY) / LatticeLayerMeters));
+    node[2] = int(std::lround(point[2] / LatticeStepMeters));
+    const float dx = point[0] - LatticeStepMeters * float(node[0]);
+    const float dy = point[1] - overlay.floorY - LatticeLayerMeters * float(node[1]);
+    const float dz = point[2] - LatticeStepMeters * float(node[2]);
+    return std::sqrt(dx * dx + dy * dy + dz * dz) < SnapMeters;
 }
 
 void SetEyeTangentsFromAngles(BodyOverlay& overlay, const float angles[4])

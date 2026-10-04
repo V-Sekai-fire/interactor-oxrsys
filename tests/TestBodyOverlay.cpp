@@ -146,3 +146,29 @@ TEST_CASE("Body hologram's grid lights the node nearest the feet and the centre 
     overlay.headPosition[2] = 0.03f;
     CHECK(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
 }
+
+TEST_CASE("Body hologram's 3D lattice lights the node nearest a hand", "[BodyOverlay]")
+{
+    BodyOverlay overlay = LookingDown();
+    int node[3] = {};
+    const float near[3] = {0.21f, 1.02f, -0.29f};
+    CHECK(NearestLatticeNode(overlay, near, node));
+    CHECK(node[0] == 2);
+    CHECK(node[1] == 2);
+    CHECK(node[2] == -3);
+    // Control: 5 cm off the node in any axis is outside the 4 cm snap.
+    const float off[3] = {0.25f, 1.0f, -0.3f};
+    CHECK_FALSE(NearestLatticeNode(overlay, off, node));
+    const float high[3] = {0.2f, 1.05f, -0.3f};
+    CHECK_FALSE(NearestLatticeNode(overlay, high, node));
+
+    overlay.handActive[1] = true;
+    overlay.handPosition[1][0] = 0.25f;
+    overlay.handPosition[1][1] = 1.0f;
+    overlay.handPosition[1][2] = -0.3f;
+    // The feet are off the centre, so any green comes from the hand.
+    overlay.headPosition[0] = 0.5f;
+    CHECK_FALSE(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
+    overlay.handPosition[1][0] = 0.21f;
+    CHECK(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
+}
