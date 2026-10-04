@@ -128,7 +128,7 @@ TEST_CASE("Body hologram's centre turns green with the feet within 4 cm", "[Body
     CHECK_FALSE(HasGreen(BuildBodyHologram(overlay, 1000, 1000, true)));
 }
 
-TEST_CASE("Body hologram's grid fades with distance from the feet and hands as xr-grid's does", "[BodyOverlay]")
+TEST_CASE("Body hologram's grid fades with distance from the feet as xr-grid's does", "[BodyOverlay]")
 {
     BodyOverlay overlay = LookingDown();
     const float atFeet[3] = {0.1f, 0.0f, 0.0f};
@@ -138,21 +138,13 @@ TEST_CASE("Body hologram's grid fades with distance from the feet and hands as x
     const float beyond[3] = {XrGridFarFade + XrGridFadeZone + 0.01f, 0.0f, 0.0f};
     CHECK_THAT(XrGridOpacity(overlay, beyond), WithinAbs(0.0, 1e-6));
 
-    // A hand brings the grid up around itself; an untracked one does not.
-    const float byHand[3] = {0.6f, 1.0f, -0.3f};
+    // Control: a tracked hand brings no grid of its own.
+    overlay.handActive[1] = true;
     overlay.handPosition[1][0] = 0.6f;
     overlay.handPosition[1][1] = 1.0f;
     overlay.handPosition[1][2] = -0.3f;
+    const float byHand[3] = {0.6f, 1.0f, -0.3f};
     CHECK_THAT(XrGridOpacity(overlay, byHand), WithinAbs(0.0, 1e-6));
-    overlay.handActive[1] = true;
-    CHECK_THAT(XrGridOpacity(overlay, byHand), WithinAbs(1.0, 1e-5));
-
-    // Near the eye the grid thins, so it does not crowd the view.
-    overlay.handPosition[1][0] = 0.0f;
-    overlay.handPosition[1][1] = 1.6f - 0.5f * XrGridNearFade;
-    overlay.handPosition[1][2] = 0.0f;
-    const float nearEye[3] = {0.0f, 1.6f - 0.5f * XrGridNearFade, 0.0f};
-    CHECK_THAT(XrGridOpacity(overlay, nearEye), WithinAbs(0.5, 1e-4));
 }
 
 TEST_CASE("Body hologram's grid bubble moves across a fixed lattice with the feet", "[BodyOverlay]")
