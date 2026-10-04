@@ -362,14 +362,6 @@ ConfigValues ParseConfigToml(std::istream& input, const ConfigValues& defaults)
                     values.stageHeightOffsetM = val;
                 }
             }
-            else if (key == "keyframe_interval_sec")
-            {
-                int val = std::stoi(value);
-                if (val >= 1 && val <= 10)
-                {
-                    values.keyframeIntervalSec = val;
-                }
-            }
             else if (key == "encoder_preset")
             {
                 value = ParseString(value);
@@ -572,7 +564,7 @@ bool Config::ReloadIfChangedLocked(bool force)
     if (!force)
     {
         spdlog::info(
-            "OXRSys: Reloaded config from {} (runtime_enabled={} bitrate={}Mbps fov={} refresh={}Hz res_scale={:.2f} dyn_min={:.2f} keyframe={}s preset={} transport={} ffe={} client_ffr={} upscaling={} reprojection={} abr={} passthrough={} occlusion={} spatial={}/{}/{}/{} audio={} quest_logcat={})",
+            "OXRSys: Reloaded config from {} (runtime_enabled={} bitrate={}Mbps fov={} refresh={}Hz res_scale={:.2f} dyn_min={:.2f} preset={} transport={} ffe={} client_ffr={} upscaling={} reprojection={} abr={} passthrough={} occlusion={} spatial={}/{}/{}/{} audio={} quest_logcat={})",
             configFilePath,
             newValues.runtimeEnabled,
             newValues.bitrateMbps,
@@ -580,7 +572,6 @@ bool Config::ReloadIfChangedLocked(bool force)
             newValues.refreshRateHz,
             newValues.resolutionScale,
             newValues.dynamicResolutionMinScale,
-            newValues.keyframeIntervalSec,
             newValues.encoderPreset,
             newValues.streamingTransport,
             newValues.foveatedEncodingPreset,
@@ -661,10 +652,9 @@ void Config::SetupLogging()
     spdlog::info("OXRSys Runtime starting (config from {})", configFilePath);
     spdlog::info("  runtime_enabled={} file_logging={} quest_logcat={}",
                   values_.runtimeEnabled, values_.fileLogging, values_.questLogcat);
-    spdlog::info("  bitrate={}Mbps fov={}° refresh={}Hz res_scale={:.2f} dyn_min={:.2f} keyframe={}s preset={} transport={} ffe={} client_ffr={} upscaling={} reprojection={} abr={} passthrough={} occlusion={} spatial={}/{}/{}/{} audio={}",
+    spdlog::info("  bitrate={}Mbps fov={}° refresh={}Hz res_scale={:.2f} dyn_min={:.2f} preset={} transport={} ffe={} client_ffr={} upscaling={} reprojection={} abr={} passthrough={} occlusion={} spatial={}/{}/{}/{} audio={}",
                   values_.bitrateMbps, values_.fovDegrees, values_.refreshRateHz,
                   values_.resolutionScale, values_.dynamicResolutionMinScale,
-                  values_.keyframeIntervalSec,
                   values_.encoderPreset, values_.streamingTransport,
                   values_.foveatedEncodingPreset, values_.clientFoveationPreset,
                   values_.clientUpscaling, values_.clientReprojectionMode,

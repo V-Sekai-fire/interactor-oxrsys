@@ -451,20 +451,6 @@ struct ContentView: View {
                             displayValue: String(format: "%.2f", model.serverConfig.dynamicResolutionMinScale)
                         )
 
-                        LabeledSlider(
-                            title: "Keyframe Interval",
-                            value: Binding(
-                                get: { Double(model.serverConfig.keyframeIntervalSec) },
-                                set: { value in
-                                    model.updateStreamingConfig {
-                                        $0.keyframeIntervalSec = Int(value.rounded())
-                                    }
-                                }
-                            ),
-                            range: 1...10,
-                            displayValue: "\(model.serverConfig.keyframeIntervalSec) s"
-                        )
-
                         Picker("Encoder preset", selection: streamingBinding(\.encoderPreset)) {
                             ForEach(EncoderPreset.allCases) { preset in
                                 Text(preset.rawValue.capitalized).tag(preset)

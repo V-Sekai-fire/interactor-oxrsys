@@ -59,7 +59,6 @@ bool VideoEncoder::Initialize(uint32_t width, uint32_t height, uint32_t fps, uin
     bitrateMbps_ = bitrateMbps;
     graphicsContext_ = graphicsContext;
     frameCount_ = 0;
-    forceKeyframe_.store(false);
     shuttingDown_.store(false);
     droppedFrameCount_.store(0);
     inFlightFrameCount_.store(0);
@@ -133,7 +132,6 @@ bool VideoEncoder::EncodeInternal(FrameSource /*frameSource*/, bool /*stereo*/, 
     metrics.frameNumber = frameNumberCounter_.fetch_add(1) + 1;
     metrics.timestampNs = timestampNs;
     metrics.keyframe = true;
-    forceKeyframe_.store(false);
 
     // Opaque black in full-range YUV 4:2:0 until the submitted images are read back.
     const size_t luma = static_cast<size_t>(width_) * height_;
@@ -188,11 +186,6 @@ bool VideoEncoder::EncodeInternal(FrameSource /*frameSource*/, bool /*stereo*/, 
         frameCallback(metrics);
     }
     return emitted;
-}
-
-void VideoEncoder::ForceKeyframe()
-{
-    forceKeyframe_.store(true);
 }
 
 void VideoEncoder::SetBitrate(uint32_t bitrateMbps)

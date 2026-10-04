@@ -302,7 +302,6 @@ bool VideoEncoder::Initialize(uint32_t width, uint32_t height, uint32_t fps,
     bitrateMbps_ = bitrateMbps;
     graphicsContext_ = graphicsContext;
     frameCount_ = 0;
-    forceKeyframe_.store(false);
     shuttingDown_.store(false);
     droppedFrameCount_.store(0);
     inFlightFrameCount_.store(0);
@@ -509,17 +508,11 @@ bool VideoEncoder::EncodeInternal(FrameSource frameSource, bool stereo, int64_t 
         spdlog::info("PyroWave: frame {} {} bytes (budget {}), encode {:.2f} ms, pack {:.2f} ms", metrics.frameNumber,
                      bytes, rate.maximum_bitstream_size, metrics.encodeSubmitMs, metrics.gpuCopyMs);
     }
-    forceKeyframe_.store(false); // every PyroWave frame is intra-only
     if (callback)
     {
         callback(state->bitstream.data(), bytes, true, timestampNs);
     }
     return finish(true);
-}
-
-void VideoEncoder::ForceKeyframe()
-{
-    forceKeyframe_.store(true);
 }
 
 void VideoEncoder::SetBitrate(uint32_t bitrateMbps)

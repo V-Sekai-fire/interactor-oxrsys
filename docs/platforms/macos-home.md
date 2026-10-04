@@ -182,7 +182,6 @@ The structured editor covers the current runtime keys:
 - `streaming.resolution_scale`
 - `streaming.dynamic_resolution_min_scale`
 - `streaming.refresh_rate_hz`
-- `streaming.keyframe_interval_sec`
 - `streaming.encoder_preset`
 - `streaming.transport`
 - `streaming.foveated_encoding_preset`
@@ -261,7 +260,6 @@ immediately. `Reveal Config` opens the TOML location, and `Reveal Runtime Logs` 
 The runtime reloads config file changes opportunistically:
 
 - `runtime_enabled` is applied to subsequent `xrCreateInstance` calls
-- `keyframe_interval_sec` is picked up by the encode loop without restarting the process
 - `quest_logcat` can start or stop adb capture after the autosaved config is written; the runtime
   clears headset logcat best-effort with a timeout before capture and continues if that clear fails
 - `bitrate_mbps`, `resolution_scale`, `dynamic_resolution_min_scale`, `refresh_rate_hz`, `encoder_preset`, `transport`,

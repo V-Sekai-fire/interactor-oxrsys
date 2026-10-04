@@ -247,7 +247,6 @@ QString ServerConfig::defaultText()
         "refresh_rate_hz = 72\n"
         "resolution_scale = 0.75\n"
         "dynamic_resolution_min_scale = 0.50\n"
-        "keyframe_interval_sec = 2\n"
         "encoder_preset = \"balanced\"\n"
         "transport = \"auto\"\n"
         "foveated_encoding_preset = \"off\"\n"
@@ -305,12 +304,6 @@ ServerConfig ServerConfig::parse(const QString& text)
     if (ok && dynamicResolutionMinScale >= 0.25 && dynamicResolutionMinScale <= 1.0)
     {
         config.dynamicResolutionMinScale = dynamicResolutionMinScale;
-    }
-
-    const int keyframeInterval = rawValue("keyframe_interval_sec", text).toInt(&ok);
-    if (ok && keyframeInterval >= 1 && keyframeInterval <= 10)
-    {
-        config.keyframeIntervalSec = keyframeInterval;
     }
 
     const QString preset = stringValue("encoder_preset", text);
@@ -435,7 +428,6 @@ QString ServerConfig::mergedInto(const QString& currentText) const
         {"refresh_rate_hz", QString::number(refreshRateHz)},
         {"resolution_scale", decimalString(resolutionScale)},
         {"dynamic_resolution_min_scale", decimalString(dynamicResolutionMinScale)},
-        {"keyframe_interval_sec", QString::number(keyframeIntervalSec)},
         {"encoder_preset", QString("\"%1\"").arg(encoderPreset)},
         {"transport", QString("\"%1\"").arg(transport)},
         {"foveated_encoding_preset", QString("\"%1\"").arg(foveatedEncodingPreset)},

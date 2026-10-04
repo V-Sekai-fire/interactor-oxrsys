@@ -12,7 +12,6 @@ struct OXRSysServerConfig: Equatable {
     var refreshRateHz = 72
     var resolutionScale = 0.75
     var dynamicResolutionMinScale = 0.50
-    var keyframeIntervalSec = 2
     var encoderPreset: EncoderPreset = .balanced
     var transport: StreamingTransportSetting = .auto
     var foveatedEncodingPreset: FoveationPresetSetting = .off
@@ -54,10 +53,6 @@ struct OXRSysServerConfig: Equatable {
     # Minimum encoded-resolution multiplier used only when abr_mode = "full"
     # and a reliable USB TCP headset client supports live stream reconfiguration.
     dynamic_resolution_min_scale = 0.50
-
-    # Keyframe interval in seconds (1-10). Higher = less bandwidth spikes, slower recovery.
-    # Default 2 is a good balance. Use 1 for lossy WiFi, 5+ for USB.
-    keyframe_interval_sec = 2
 
     # Encoder speed preset: "quality", "balanced", "speed"
     # speed  = lowest latency, fastest encode, lower quality
@@ -131,9 +126,6 @@ struct OXRSysServerConfig: Equatable {
         if let value = doubleValue("dynamic_resolution_min_scale", in: text), value >= 0.25, value <= 1.0 {
             config.dynamicResolutionMinScale = value
         }
-        if let value = intValue("keyframe_interval_sec", in: text), (1...10).contains(value) {
-            config.keyframeIntervalSec = value
-        }
         if let value = stringValue("encoder_preset", in: text), let preset = EncoderPreset(rawValue: value) {
             config.encoderPreset = preset
         }
@@ -201,7 +193,6 @@ struct OXRSysServerConfig: Equatable {
                 ("refresh_rate_hz", "\(refreshRateHz)"),
                 ("resolution_scale", decimalString(resolutionScale)),
                 ("dynamic_resolution_min_scale", decimalString(dynamicResolutionMinScale)),
-                ("keyframe_interval_sec", "\(keyframeIntervalSec)"),
                 ("encoder_preset", "\"\(encoderPreset.rawValue)\""),
                 ("transport", "\"\(transport.rawValue)\""),
                 ("foveated_encoding_preset", "\"\(foveatedEncodingPreset.rawValue)\""),

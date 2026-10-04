@@ -49,7 +49,7 @@ quest_logcat = yes
     CHECK(values.resolutionScale == 0.8f);
     CHECK(values.dynamicResolutionMinScale == 0.55f);
     CHECK(values.refreshRateHz == 120);
-    CHECK(values.keyframeIntervalSec == 4);
+    // keyframe_interval_sec above is no longer a key; an old file carrying it still parses around it.
     CHECK(values.encoderPreset == "quality");
     CHECK(values.foveatedEncodingPreset == "medium");
     CHECK(values.clientFoveationPreset == "high");
@@ -92,7 +92,6 @@ occlusion_mode = "magic"
     defaults.resolutionScale = 0.5f;
     defaults.dynamicResolutionMinScale = 0.45f;
     defaults.refreshRateHz = 80;
-    defaults.keyframeIntervalSec = 3;
     defaults.encoderPreset = "speed";
     defaults.foveatedEncodingPreset = "light";
     defaults.clientFoveationPreset = "medium";
@@ -109,7 +108,6 @@ occlusion_mode = "magic"
     CHECK(values.resolutionScale == 0.5f);
     CHECK(values.dynamicResolutionMinScale == 0.45f);
     CHECK(values.refreshRateHz == 80);
-    CHECK(values.keyframeIntervalSec == 3);
     CHECK(values.encoderPreset == "speed");
     CHECK(values.foveatedEncodingPreset == "light");
     CHECK(values.clientFoveationPreset == "medium");
