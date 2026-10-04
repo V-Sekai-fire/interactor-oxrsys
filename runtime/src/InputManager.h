@@ -93,6 +93,9 @@ public:
     // Conformance automation overrides
     void SetAutomationInteractionProfile(Hand hand, const std::string& interactionProfile, bool isActive);
     bool HasAutomationActivity(Hand hand) const;
+    // Whether the device behind a binding of this profile is tracking now: automation first, then the
+    // streaming client's hands or controllers, then the local default.
+    bool IsDeviceActiveForProfile(Hand hand, const std::string& profilePath) const;
     void SetAutomationBoolean(Hand hand, const std::string& componentPath, bool state);
     void SetAutomationFloat(Hand hand, const std::string& componentPath, float state);
     void SetAutomationVector2f(Hand hand, const std::string& componentPath, XrVector2f state);

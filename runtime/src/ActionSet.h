@@ -47,6 +47,9 @@ public:
         return priority_;
     }
 
+    // Subaction paths any of its actions declared, kept after those actions are destroyed.
+    std::vector<XrPath> declaredSubactionPaths;
+
 private:
     uint64_t handle_ = 0;
     std::string name_;

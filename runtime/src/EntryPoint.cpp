@@ -1822,6 +1822,10 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrCreateAction(
         }
     }
 
+    for (uint32_t i = 0; i < createInfo->countSubactionPaths; ++i)
+    {
+        as->declaredSubactionPaths.push_back(createInfo->subactionPaths[i]);
+    }
     auto act = std::make_unique<ActionState>(as, createInfo);
     *action = reinterpret_cast<XrAction>(act->GetHandle());
     gActions.push_back(std::move(act));
@@ -2298,14 +2302,7 @@ static void AccumulateBindingState(const InputManager& inputManager, const Sugge
     }
 
     InputManager::Hand hand = HandFromBindingPath(binding.bindingPathString);
-    bool deviceActive = inputManager.IsInputDeviceActive(hand);
-    if (inputManager.IsStreaming() && !inputManager.HasAutomationActivity(hand))
-    {
-        deviceActive = binding.profilePathString == "/interaction_profiles/ext/hand_interaction_ext"
-                           ? inputManager.IsHandTrackingActive(hand)
-                           : inputManager.IsControllerTrackingActive(hand);
-    }
-    if (!deviceActive)
+    if (!inputManager.IsDeviceActiveForProfile(hand, binding.profilePathString))
     {
         return;
     }
@@ -2469,12 +2466,9 @@ static XRAPI_ATTR XrResult XRAPI_CALL OxrSyncActions(
             {
                 return XR_ERROR_PATH_INVALID;
             }
-            const bool declared = std::any_of(gActions.begin(), gActions.end(), [&](const auto& action) {
-                const std::vector<XrPath>& paths = action->GetSubactionPaths();
-                return action->GetActionSet()->GetHandle() == handle &&
-                       std::find(paths.begin(), paths.end(), subactionPath) != paths.end();
-            });
-            if (!declared)
+            const std::vector<XrPath>& declared =
+                Runtime::Get().FromHandle<ActionSetState>(handle)->declaredSubactionPaths;
+            if (std::find(declared.begin(), declared.end(), subactionPath) == declared.end())
             {
                 return XR_ERROR_PATH_UNSUPPORTED;
             }

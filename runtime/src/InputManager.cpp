@@ -589,6 +589,15 @@ bool InputManager::HasAutomationActivity(Hand hand) const
     return GetAutomationState(hand).hasExplicitActivity;
 }
 
+bool InputManager::IsDeviceActiveForProfile(Hand hand, const std::string& profilePath) const
+{
+    if (IsStreaming() && !HasAutomationActivity(hand))
+    {
+        return profilePath == kHandInteractionProfile ? IsHandTrackingActive(hand) : IsControllerTrackingActive(hand);
+    }
+    return IsInputDeviceActive(hand);
+}
+
 bool InputManager::IsInputDeviceActive(Hand hand) const
 {
     const auto& automation = GetAutomationState(hand);
