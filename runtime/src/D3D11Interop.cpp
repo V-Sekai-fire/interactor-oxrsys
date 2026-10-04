@@ -1134,9 +1134,6 @@ std::vector<int64_t> Win32SupportedD3D11Formats()
         formats.push_back(DXGI_FORMAT_D24_UNORM_S8_UINT);
     }
     formats.push_back(DXGI_FORMAT_D16_UNORM);
-    formats.push_back(DXGI_FORMAT_R8G8B8A8_TYPELESS);
-    formats.push_back(DXGI_FORMAT_B8G8R8A8_TYPELESS);
-    formats.push_back(DXGI_FORMAT_R16G16B16A16_TYPELESS);
     return formats;
 }
 
